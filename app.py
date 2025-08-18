@@ -6,6 +6,14 @@ import logging
 import os
 import json
 
+# Import the Google Sheets manager (from your existing code)
+try:
+    from sheets_integration import GoogleSheetsManager
+    SHEETS_AVAILABLE = True
+except ImportError:
+    SHEETS_AVAILABLE = False
+    print("⚠️ Google Sheets integration not available")
+
 # Initialize Flask app with static folder for React build
 app = Flask(__name__, static_folder='frontend/build', static_url_path='')
 CORS(app)  # Enable CORS for React app
@@ -14,9 +22,9 @@ CORS(app)  # Enable CORS for React app
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# SMART CACHING SYSTEM
+# SMART CACHING SYSTEM - Allows manual refresh override
 CACHE = {}
-CACHE_DURATION = 120  # 2 minutes cache
+CACHE_DURATION = 120  # 2 minutes cache for auto-refresh
 FORCE_REFRESH_PARAM = 'force_refresh'
 
 def get_from_cache(key, allow_cache=True):
@@ -35,7 +43,43 @@ def set_cache(key, data):
     CACHE[key] = (data, datetime.now())
     logger.info(f"Cached data for {key}")
 
-# Mock data functions
+# Initialize Google Sheets Manager
+def get_credentials():
+    """Get Google credentials from environment variable or file"""
+    try:
+        # Try to get credentials from environment variable first
+        credentials_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+        if credentials_json:
+            # Parse the JSON string and create a temporary file
+            credentials_dict = json.loads(credentials_json)
+            
+            # Create temporary credentials file
+            with open('/tmp/credentials.json', 'w') as f:
+                json.dump(credentials_dict, f)
+            return '/tmp/credentials.json'
+        else:
+            # Fallback to local file (for development)
+            return 'credentials.json'
+    except Exception as e:
+        logger.error(f"Error setting up credentials: {e}")
+        return None
+
+# Initialize Google Sheets Manager
+if SHEETS_AVAILABLE:
+    credentials_path = get_credentials()
+    if credentials_path:
+        gs_manager = GoogleSheetsManager(credentials_path)
+    else:
+        gs_manager = None
+        logger.warning("No valid credentials found - using mock data only")
+else:
+    gs_manager = None
+    logger.warning("Google Sheets integration not available - using mock data only")
+
+# Your Google Sheet ID
+SHEET_ID = "1zaRPHP3k-K1L0z3Bi_Wk--S1Xe2erOAAVYp78h18UUI"
+
+# Mock data for testing
 def get_mock_orders():
     return [
         {
@@ -53,265 +97,88 @@ def get_mock_orders():
         },
         {
             'id': 'ORD-2025-002',
-            'booth_number': '100',
-            'exhibitor_name': 'APACKAGING GROUP, LLC',
-            'item': 'Round Table 30" high',
-            'description': 'Professional exhibition furniture',
-            'color': 'White',
-            'quantity': 2,
-            'status': 'delivered',
+            'booth_number': 'A-245',
+            'exhibitor_name': 'TechFlow Innovations',
+            'item': 'Interactive Display System',
+            'description': '75" 4K touchscreen display with interactive software and mounting',
+            'color': 'Black',
+            'quantity': 1,
+            'status': 'in-route',
             'order_date': 'June 13, 2025',
-            'comments': 'Coordinated by Expo Convention Contractors',
-            'section': 'Section 1'
+            'comments': '',
+            'section': 'Section A'
         },
         {
             'id': 'ORD-2025-003',
-            'booth_number': '101',
-            'exhibitor_name': 'Pure Beauty Labs, LLC',
-            'item': 'White Side Chair',
-            'description': 'Professional seating solution',
-            'color': 'White',
-            'quantity': 4,
-            'status': 'out-for-delivery',
+            'booth_number': 'B-156',
+            'exhibitor_name': 'GreenWave Energy',
+            'item': 'Marketing Materials Bundle',
+            'description': 'Banners, brochures, business cards, and promotional items',
+            'color': 'Green',
+            'quantity': 5,
+            'status': 'delivered',
             'order_date': 'June 12, 2025',
-            'comments': 'High-quality event furniture',
-            'section': 'Section 1'
+            'comments': 'Eco-friendly materials requested',
+            'section': 'Section B'
+        },
+        {
+            'id': 'ORD-2025-004',
+            'booth_number': 'C-089',
+            'exhibitor_name': 'SmartHealth Corp',
+            'item': 'Audio-Visual Equipment',
+            'description': 'Professional sound system, microphones, and presentation equipment',
+            'color': 'White',
+            'quantity': 1,
+            'status': 'in-process',
+            'order_date': 'June 14, 2025',
+            'comments': 'Medical grade equipment required',
+            'section': 'Section C'
         }
     ]
 
-def get_mock_checklist():
-    return [
-        # Booth 100 items (7 completed, 4 pending = 64% complete)
-        {
-            'booth_number': '100',
-            'section': 'Section 1',
-            'exhibitor_name': 'APACKAGING GROUP, LLC',
-            'quantity': 1,
-            'name': '3m x 4m Corner Booth',
-            'special_instructions': '',
-            'status': True,
-            'date': '01-28-25',
-            'hour': '13:10:22',
-            'data_source': 'Mock Data'
-        },
-        {
-            'booth_number': '100',
-            'section': 'Section 1',
-            'exhibitor_name': 'APACKAGING GROUP, LLC',
-            'quantity': 1,
-            'name': 'BeMatrix Structure with White Double Fabric Walls',
-            'special_instructions': '',
-            'status': True,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        },
-        {
-            'booth_number': '100',
-            'section': 'Section 1',
-            'exhibitor_name': 'APACKAGING GROUP, LLC',
-            'quantity': 1,
-            'name': 'Rectangular White Table',
-            'special_instructions': '',
-            'status': True,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        },
-        {
-            'booth_number': '100',
-            'section': 'Section 1',
-            'exhibitor_name': 'APACKAGING GROUP, LLC',
-            'quantity': 4,
-            'name': 'White Chair',
-            'special_instructions': '',
-            'status': True,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        },
-        {
-            'booth_number': '100',
-            'section': 'Section 1',
-            'exhibitor_name': 'APACKAGING GROUP, LLC',
-            'quantity': 1,
-            'name': 'Wastebasket',
-            'special_instructions': '',
-            'status': True,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        },
-        {
-            'booth_number': '100',
-            'section': 'Section 1',
-            'exhibitor_name': 'APACKAGING GROUP, LLC',
-            'quantity': 1,
-            'name': 'Company Name Sign 24"W x 16"H',
-            'special_instructions': '',
-            'status': True,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        },
-        {
-            'booth_number': '100',
-            'section': 'Section 1',
-            'exhibitor_name': 'APACKAGING GROUP, LLC',
-            'quantity': 1,
-            'name': '500 Watt Electrical Outlet',
-            'special_instructions': '',
-            'status': True,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        },
-        {
-            'booth_number': '100',
-            'section': 'Section 1',
-            'exhibitor_name': 'APACKAGING GROUP, LLC',
-            'quantity': 1,
-            'name': '6 Track with Three Can Lights',
-            'special_instructions': '',
-            'status': False,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        },
-        {
-            'booth_number': '100',
-            'section': 'Section 1',
-            'exhibitor_name': 'APACKAGING GROUP, LLC',
-            'quantity': 1,
-            'name': 'White Shelving Unit',
-            'special_instructions': '',
-            'status': False,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        },
-        {
-            'booth_number': '100',
-            'section': 'Section 1',
-            'exhibitor_name': 'APACKAGING GROUP, LLC',
-            'quantity': 1,
-            'name': '3m x 4m Wood Vinyl Flooring',
-            'special_instructions': '',
-            'status': False,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        },
-        {
-            'booth_number': '100',
-            'section': 'Section 1',
-            'exhibitor_name': 'APACKAGING GROUP, LLC',
-            'quantity': 1,
-            'name': '3M Fabric Graphic',
-            'special_instructions': '',
-            'status': False,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        },
-        # Booth 101 items (5 completed, 3 pending = 63% complete)
-        {
-            'booth_number': '101',
-            'section': 'Section 1',
-            'exhibitor_name': 'Pure Beauty Labs, LLC',
-            'quantity': 1,
-            'name': '3m x 8m Corner Booth',
-            'special_instructions': '',
-            'status': True,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        },
-        {
-            'booth_number': '101',
-            'section': 'Section 1',
-            'exhibitor_name': 'Pure Beauty Labs, LLC',
-            'quantity': 1,
-            'name': 'BeMatrix Structure with White Double Fabric Walls',
-            'special_instructions': '',
-            'status': True,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        },
-        {
-            'booth_number': '101',
-            'section': 'Section 1',
-            'exhibitor_name': 'Pure Beauty Labs, LLC',
-            'quantity': 1,
-            'name': 'Rectangular White Table',
-            'special_instructions': '',
-            'status': True,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        },
-        {
-            'booth_number': '101',
-            'section': 'Section 1',
-            'exhibitor_name': 'Pure Beauty Labs, LLC',
-            'quantity': 4,
-            'name': 'White Chair',
-            'special_instructions': '',
-            'status': True,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        },
-        {
-            'booth_number': '101',
-            'section': 'Section 1',
-            'exhibitor_name': 'Pure Beauty Labs, LLC',
-            'quantity': 1,
-            'name': 'Mini Refrigerator',
-            'special_instructions': 'Color May Vary',
-            'status': True,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        },
-        {
-            'booth_number': '101',
-            'section': 'Section 1',
-            'exhibitor_name': 'Pure Beauty Labs, LLC',
-            'quantity': 1,
-            'name': 'VIP Glow Bar 6 Frosted Plexi',
-            'special_instructions': '',
-            'status': False,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        },
-        {
-            'booth_number': '101',
-            'section': 'Section 1',
-            'exhibitor_name': 'Pure Beauty Labs, LLC',
-            'quantity': 1,
-            'name': 'TV Rental - 55" with Wall Mount Brackets',
-            'special_instructions': '',
-            'status': False,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        },
-        {
-            'booth_number': '101',
-            'section': 'Section 1',
-            'exhibitor_name': 'Pure Beauty Labs, LLC',
-            'quantity': 1,
-            'name': 'Advance Shipment',
-            'special_instructions': 'TO SHOW - LIFT GATE, RESIDENTIAL, INSIDE DELIVERY',
-            'status': False,
-            'date': '',
-            'hour': '',
-            'data_source': 'Mock Data'
-        }
-    ]
+def load_orders_from_sheets(force_refresh=False):
+    """Load orders from Google Sheets with smart caching"""
+    cache_key = "all_orders"
+    
+    # Check cache first (unless force refresh)
+    if not force_refresh:
+        cached_data = get_from_cache(cache_key, allow_cache=True)
+        if cached_data:
+            return cached_data
+    
+    try:
+        if not gs_manager:
+            logger.warning("No Google Sheets manager available, using mock data")
+            mock_data = get_mock_orders()
+            set_cache(cache_key, mock_data)
+            return mock_data
+            
+        # Get all orders from Google Sheets
+        all_orders = []
+        data = gs_manager.get_data(SHEET_ID, "Orders")
+        
+        if data and len(data) > 0:
+            if isinstance(data, list):
+                all_orders = gs_manager.parse_orders_data(data)
+                logger.info(f"Loaded {len(all_orders)} orders from Google Sheets")
+            
+            if all_orders:
+                set_cache(cache_key, all_orders)
+                if force_refresh:
+                    logger.info("🔄 FORCE REFRESH: Fresh data loaded from Google Sheets")
+                return all_orders
+        
+        logger.warning("No data found in Google Sheets, using mock data")
+        mock_data = get_mock_orders()
+        set_cache(cache_key, mock_data)
+        return mock_data
+        
+    except Exception as e:
+        logger.error(f"Error loading orders from sheets: {e}")
+        logger.info("Falling back to mock data")
+        mock_data = get_mock_orders()
+        set_cache(cache_key, mock_data)
+        return mock_data
 
 # REACT APP SERVING ROUTES
 @app.route('/')
@@ -326,8 +193,10 @@ def serve_react_app():
 def serve_static_files(path):
     """Serve static files or React app for client-side routing"""
     try:
+        # Try to serve static file first
         return send_from_directory('frontend/build', path)
     except FileNotFoundError:
+        # If file not found, serve React app (for client-side routing)
         try:
             return send_file('frontend/build/index.html')
         except FileNotFoundError:
@@ -340,6 +209,7 @@ def health_check():
     return jsonify({
         'status': 'healthy', 
         'timestamp': datetime.now().isoformat(),
+        'google_sheets_connected': gs_manager is not None,
         'cache_size': len(CACHE)
     })
 
@@ -357,17 +227,19 @@ def abacus_status():
 
 @app.route('/api/orders/booth/<booth_number>', methods=['GET'])
 def get_orders_by_booth(booth_number):
-    """Get orders for a specific booth number"""
+    """Get orders for a specific booth number with smart caching"""
     cache_key = f"booth_{booth_number}"
     force_refresh = request.args.get(FORCE_REFRESH_PARAM, 'false').lower() == 'true'
     
+    # Try cache first (unless force refresh)
     if not force_refresh:
         cached_data = get_from_cache(cache_key, allow_cache=True)
         if cached_data:
             return jsonify(cached_data)
     
     try:
-        all_orders = get_mock_orders()
+        # Get all orders and filter by booth number
+        all_orders = load_orders_from_sheets(force_refresh=force_refresh)
         booth_orders = [
             order for order in all_orders 
             if order['booth_number'].lower() == booth_number.lower()
@@ -385,6 +257,10 @@ def get_orders_by_booth(booth_number):
         }
         
         set_cache(cache_key, result)
+        
+        if force_refresh:
+            logger.info(f"🔄 MANUAL REFRESH: Fresh data for booth {booth_number}")
+        
         return jsonify(result)
         
     except Exception as e:
@@ -398,76 +274,19 @@ def get_orders_by_booth(booth_number):
             'error': str(e)
         }), 500
 
-@app.route('/api/checklist/booth/<booth_number>', methods=['GET'])
-def get_checklist_by_booth(booth_number):
-    """Get checklist items for a specific booth number with progress calculation"""
-    cache_key = f"checklist_booth_{booth_number}"
+@app.route('/api/orders', methods=['GET'])
+def get_all_orders():
+    """Get all orders with smart caching"""
     force_refresh = request.args.get(FORCE_REFRESH_PARAM, 'false').lower() == 'true'
-    
-    if not force_refresh:
-        cached_data = get_from_cache(cache_key, allow_cache=True)
-        if cached_data:
-            return jsonify(cached_data)
-    
-    try:
-        all_checklist_items = get_mock_checklist()
-        booth_items = [
-            item for item in all_checklist_items 
-            if str(item['booth_number']).lower() == str(booth_number).lower()
-        ]
-        
-        if not booth_items:
-            result = {
-                'booth': booth_number,
-                'exhibitor_name': f'Booth {booth_number}',
-                'section': 'Unknown',
-                'total_items': 0,
-                'completed_items': 0,
-                'items': [],
-                'last_updated': datetime.now().isoformat(),
-                'force_refreshed': force_refresh
-            }
-        else:
-            total_items = len(booth_items)
-            completed_items = len([item for item in booth_items if item['status'] == True])
-            
-            exhibitor_name = booth_items[0].get('exhibitor_name', f'Booth {booth_number}')
-            section = booth_items[0].get('section', 'Unknown')
-            
-            result = {
-                'booth': booth_number,
-                'exhibitor_name': exhibitor_name,
-                'section': section,
-                'total_items': total_items,
-                'completed_items': completed_items,
-                'progress_percentage': round((completed_items / total_items) * 100) if total_items > 0 else 0,
-                'items': booth_items,
-                'last_updated': datetime.now().isoformat(),
-                'force_refreshed': force_refresh
-            }
-        
-        set_cache(cache_key, result)
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"Error getting checklist for booth {booth_number}: {e}")
-        return jsonify({
-            'booth': booth_number,
-            'exhibitor_name': f'Booth {booth_number}',
-            'section': 'Unknown',
-            'total_items': 0,
-            'completed_items': 0,
-            'items': [],
-            'last_updated': datetime.now().isoformat(),
-            'error': str(e)
-        }), 500
+    orders = load_orders_from_sheets(force_refresh=force_refresh)
+    return jsonify(orders)
 
 @app.route('/api/clear-cache', methods=['POST'])
 def clear_cache():
-    """Clear all cached data"""
+    """Clear all cached data - useful for forcing fresh data"""
     global CACHE
     CACHE = {}
-    logger.info("Cache cleared manually")
+    logger.info("🗑️ Cache cleared manually")
     return jsonify({'message': 'Cache cleared successfully'})
 
 if __name__ == '__main__':
