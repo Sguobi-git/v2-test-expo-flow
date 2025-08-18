@@ -8,6 +8,27 @@ import os
 import json
 
 
+# Import the Google Sheets manager (from your existing code)
+try:
+    from sheets_integration import GoogleSheetsManager
+    SHEETS_AVAILABLE = True
+except ImportError:
+    SHEETS_AVAILABLE = False
+    print("⚠️ Google Sheets integration not available")
+
+# Initialize Flask app with static folder for React build
+app = Flask(__name__, static_folder='frontend/build', static_url_path='')
+CORS(app)  # Enable CORS for React app
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# SMART CACHING SYSTEM - Allows manual refresh override
+CACHE = {}
+CACHE_DURATION = 120  # 2 minutes cache for auto-refresh
+FORCE_REFRESH_PARAM = 'force_refresh'
+
 
 @app.route('/api/checklist/booth/<booth_number>', methods=['GET'])
 def get_checklist_by_booth(booth_number):
@@ -235,26 +256,7 @@ def get_mock_checklist():
 
 
 
-# Import the Google Sheets manager (from your existing code)
-try:
-    from sheets_integration import GoogleSheetsManager
-    SHEETS_AVAILABLE = True
-except ImportError:
-    SHEETS_AVAILABLE = False
-    print("⚠️ Google Sheets integration not available")
 
-# Initialize Flask app with static folder for React build
-app = Flask(__name__, static_folder='frontend/build', static_url_path='')
-CORS(app)  # Enable CORS for React app
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# SMART CACHING SYSTEM - Allows manual refresh override
-CACHE = {}
-CACHE_DURATION = 120  # 2 minutes cache for auto-refresh
-FORCE_REFRESH_PARAM = 'force_refresh'
 
 def get_from_cache(key, allow_cache=True):
     if not allow_cache:
