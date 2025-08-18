@@ -1,4 +1,210 @@
-from flask import Flask, jsonify, request, send_from_directory, send_file
+@app.route('/api/checklist/booth/<booth_number>', methods=['GET'])
+def get_checklist_by_booth(booth_number):
+    """Get checklist items for a specific booth number with progress calculation"""
+    cache_key = f"checklist_booth_{booth_number}"
+    force_refresh = request.args.get(FORCE_REFRESH_PARAM, 'false').lower() == 'true'
+    
+    # Try cache first (unless force refresh)
+    if not force_refresh:
+        cached_data = get_from_cache(cache_key, allow_cache=True)
+        if cached_data:
+            return jsonify(cached_data)
+    
+    try:
+        # Get all checklist items and filter by booth number
+        all_checklist_items = load_checklist_from_sheets(force_refresh=force_refresh)
+        booth_items = [
+            item for item in all_checklist_items 
+            if str(item['booth_number']).lower() == str(booth_number).lower()
+        ]
+        
+        if not booth_items:
+            # Return empty result if no items found
+            result = {
+                'booth': booth_number,
+                'exhibitor_name': f'Booth {booth_number}',
+                'section': 'Unknown',
+                'total_items': 0,
+                'completed_items': 0,
+                'items': [],
+                'last_updated': datetime.now().isoformat(),
+                'force_refreshed': force_refresh
+            }
+        else:
+            # Calculate progress
+            total_items = len(booth_items)
+            completed_items = len([item for item in booth_items if item['status'] == True])
+            
+            # Get exhibitor info from first item
+            exhibitor_name = booth_items[0].get('exhibitor_name', f'Booth {booth_number}')
+            section = booth_items[0].get('section', 'Unknown')
+            
+            result = {
+                'booth': booth_number,
+                'exhibitor_name': exhibitor_name,
+                'section': section,
+                'total_items': total_items,
+                'completed_items': completed_items,
+                'progress_percentage': round((completed_items / total_items) * 100) if total_items > 0 else 0,
+                'items': booth_items,
+                'last_updated': datetime.now().isoformat(),
+                'force_refreshed': force_refresh
+            }
+        
+        set_cache(cache_key, result)
+        
+        if force_refresh:
+            logger.info(f"🔄 MANUAL REFRESH: Fresh checklist data for booth {booth_number}")
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error getting checklist for booth {booth_number}: {e}")
+        return jsonify({
+            'booth': booth_number,
+            'exhibitor_name': f'Booth {booth_number}',
+            'section': 'Unknown',
+            'total_items': 0,
+            'completed_items': 0,
+            'items': [],
+            'last_updated': datetime.now().isoformat(),
+            'error': str(e)
+        }), 500
+
+def load_checklist_from_sheets(force_refresh=False):
+    """Load checklist items from Google Sheets with smart caching"""
+    cache_key = "all_checklist_items"
+    
+    # Check cache first (unless force refresh)
+    if not force_refresh:
+        cached_data = get_from_cache(cache_key, allow_cache=True)
+        if cached_data:
+            return cached_data
+    
+    try:
+        if not gs_manager:
+            logger.warning("No Google Sheets manager available, using mock checklist data")
+            mock_data = get_mock_checklist()
+            set_cache(cache_key, mock_data)
+            return mock_data
+            
+        # Get all checklist items from Google Sheets
+        # Using the new checklist sheet - you'll need to update your sheets_integration.py
+        # to handle the checklist data structure
+        all_items = []
+        data = gs_manager.get_data(SHEET_ID, "Booth Checklist")  # Update sheet name as needed
+        
+        if data and len(data) > 0:
+            if isinstance(data, list):
+                all_items = parse_checklist_data(data)
+                logger.info(f"Loaded {len(all_items)} checklist items from Google Sheets")
+            
+            if all_items:
+                set_cache(cache_key, all_items)
+                if force_refresh:
+                    logger.info("🔄 FORCE REFRESH: Fresh checklist data loaded from Google Sheets")
+                return all_items
+        
+        logger.warning("No checklist data found in Google Sheets, using mock data")
+        mock_data = get_mock_checklist()
+        set_cache(cache_key, mock_data)
+        return mock_data
+        
+    except Exception as e:
+        logger.error(f"Error loading checklist from sheets: {e}")
+        logger.info("Falling back to mock checklist data")
+        mock_data = get_mock_checklist()
+        set_cache(cache_key, mock_data)
+        return mock_data
+
+def parse_checklist_data(data):
+    """Parse checklist data from Google Sheets"""
+    items = []
+    
+    try:
+        if not data or len(data) < 2:
+            return []
+        
+        # Find header row
+        header_row_idx = 0
+        headers = []
+        
+        for i, row in enumerate(data):
+            if any('Booth' in str(cell) for cell in row):
+                headers = [str(cell).strip() for cell in row]
+                header_row_idx = i
+                break
+        
+        if not headers:
+            headers = [str(cell).strip() for cell in data[0]]
+            header_row_idx = 0
+        
+        logger.info(f"Using checklist headers: {headers}")
+        
+        # Process data rows
+        for row_idx, row in enumerate(data[header_row_idx + 1:], start=header_row_idx + 1):
+            if not row or len(row) == 0:
+                continue
+            
+            # Create dictionary from row data
+            row_dict = {}
+            for i, value in enumerate(row):
+                if i < len(headers):
+                    row_dict[headers[i]] = str(value).strip()
+            
+            # Extract checklist item data
+            booth_num = row_dict.get('Booth #', '').strip()
+            if not booth_num or booth_num == '0':  # Skip invalid booth numbers
+                continue
+                
+            exhibitor_name = row_dict.get('Exhibitor Name', '').strip()
+            item_name = row_dict.get('Item Name', '').strip()
+            
+            if not exhibitor_name or not item_name:
+                continue
+            
+            # Parse status (TRUE/FALSE to boolean)
+            status_str = row_dict.get('Status', 'FALSE').strip().upper()
+            status = status_str == 'TRUE'
+            
+            # Build checklist item dictionary
+            item = {
+                'booth_number': booth_num,
+                'section': row_dict.get('Section', '').strip(),
+                'exhibitor_name': exhibitor_name,
+                'quantity': safe_int(row_dict.get('Quantity', '1')),
+                'name': item_name,
+                'special_instructions': row_dict.get('Special Instructions', '').strip(),
+                'status': status,
+                'date': row_dict.get('Date', '').strip(),
+                'hour': row_dict.get('Hour', '').strip(),
+                'data_source': 'Google Sheets Checklist'
+            }
+            
+            items.append(item)
+        
+        logger.info(f"Parsed {len(items)} valid checklist items from Google Sheets")
+        return items
+        
+    except Exception as e:
+        logger.error(f"Error parsing checklist data: {e}")
+        return []
+
+def safe_int(value, default=1):
+    """Safely convert value to int"""
+    try:
+        return int(float(str(value))) if value else default
+    except (ValueError, TypeError):
+        return default
+
+def get_mock_checklist():
+    """Mock checklist data for testing"""
+    return [
+        # Booth 100 items
+        {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 1, 'name': '3m x 4m Corner Booth', 'special_instructions': '', 'status': True, 'date': '01-28-25', 'hour': '13:10:22', 'data_source': 'Mock Data'},
+        {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 1, 'name': 'BeMatrix Structure with White Double Fabric Walls', 'special_instructions': '', 'status': True, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+        {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 1, 'name': 'Rectangular White Table', 'special_instructions': '', 'status': True, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+        {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity':from flask import Flask, jsonify, request, send_from_directory, send_file
 from flask_cors import CORS
 from datetime import datetime, timedelta
 import time
