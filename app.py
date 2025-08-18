@@ -201,7 +201,25 @@ def get_mock_checklist():
     """Mock checklist data for testing"""
     return [
         # Booth 100 items
-        {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 1, 'name': '3m x 4m Corner Booth', 'special_instructions': '', 'status': True, 'date': '01-28-25', 'hour': '13:10:22', 'data_source': 'Mock Data'},
+        {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 4, 'name': 'White Chair', 'special_instructions': '', 'status': True, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+        {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 1, 'name': 'Wastebasket', 'special_instructions': '', 'status': True, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+        {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 1, 'name': 'Company Name Sign 24"W x 16"H', 'special_instructions': '', 'status': True, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+        {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 1, 'name': '500 Watt Electrical Outlet', 'special_instructions': '', 'status': True, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+        {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 1, 'name': '6\' Track with Three Can Lights', 'special_instructions': '', 'status': False, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+        {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 1, 'name': 'White Shelving Unit', 'special_instructions': '', 'status': False, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+        {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 1, 'name': '3m x 4m Wood Vinyl Flooring', 'special_instructions': '', 'status': False, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+        {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 1, 'name': '3M Fabric Graphic - 117.17"W x 95.20"H', 'special_instructions': '', 'status': False, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+        
+        # Booth 101 items
+        {'booth_number': '101', 'section': 'Section 1', 'exhibitor_name': 'Pure Beauty Labs, LLC', 'quantity': 1, 'name': '3m x 8m Corner Booth', 'special_instructions': '', 'status': True, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+        {'booth_number': '101', 'section': 'Section 1', 'exhibitor_name': 'Pure Beauty Labs, LLC', 'quantity': 1, 'name': 'BeMatrix Structure with White Double Fabric Walls', 'special_instructions': '', 'status': True, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+        {'booth_number': '101', 'section': 'Section 1', 'exhibitor_name': 'Pure Beauty Labs, LLC', 'quantity': 1, 'name': 'Rectangular White Table', 'special_instructions': '', 'status': True, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+        {'booth_number': '101', 'section': 'Section 1', 'exhibitor_name': 'Pure Beauty Labs, LLC', 'quantity': 4, 'name': 'White Chair', 'special_instructions': '', 'status': True, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+        {'booth_number': '101', 'section': 'Section 1', 'exhibitor_name': 'Pure Beauty Labs, LLC', 'quantity': 1, 'name': 'Mini Refrigerator - Color May Vary', 'special_instructions': '', 'status': True, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+        {'booth_number': '101', 'section': 'Section 1', 'exhibitor_name': 'Pure Beauty Labs, LLC', 'quantity': 1, 'name': 'VIP Glow Bar 6\' Frosted Plexi', 'special_instructions': '', 'status': False, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+        {'booth_number': '101', 'section': 'Section 1', 'exhibitor_name': 'Pure Beauty Labs, LLC', 'quantity': 1, 'name': 'TV Rental - 55" with Wall Mount Brackets', 'special_instructions': '', 'status': False, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+        {'booth_number': '101', 'section': 'Section 1', 'exhibitor_name': 'Pure Beauty Labs, LLC', 'quantity': 498, 'name': 'Advance Shipment Per Pound', 'special_instructions': 'TO SHOW - LIFT GATE, RESIDENTIAL, INSIDE DELIVERY', 'status': False, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
+    ] 1, 'name': '3m x 4m Corner Booth', 'special_instructions': '', 'status': True, 'date': '01-28-25', 'hour': '13:10:22', 'data_source': 'Mock Data'},
         {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 1, 'name': 'BeMatrix Structure with White Double Fabric Walls', 'special_instructions': '', 'status': True, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
         {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 1, 'name': 'Rectangular White Table', 'special_instructions': '', 'status': True, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
         {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity':from flask import Flask, jsonify, request, send_from_directory, send_file
@@ -430,6 +448,13 @@ def abacus_status():
         'version': '3.0.0',
         'cache_enabled': True
     })
+
+@app.route('/api/checklist', methods=['GET'])
+def get_all_checklist_items():
+    """Get all checklist items with smart caching"""
+    force_refresh = request.args.get(FORCE_REFRESH_PARAM, 'false').lower() == 'true'
+    items = load_checklist_from_sheets(force_refresh=force_refresh)
+    return jsonify(items)
 
 @app.route('/api/orders/booth/<booth_number>', methods=['GET'])
 def get_orders_by_booth(booth_number):
