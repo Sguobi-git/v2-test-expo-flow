@@ -1,0 +1,464 @@
+# sheets_integration.py
+# This script adapts your existing Google Sheets code for the API
+
+
+import gspread
+from google.oauth2.service_account import Credentials
+import logging
+from datetime import datetime
+from typing import List, Dict, Optional
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class GoogleSheetsManager:
+    """
+    Google Sheets Manager - adapted from your existing code
+    """
+    
+    def __init__(self, credentials_path: str = None):
+        """
+        Initialize Google Sheets Manager
+        
+        Args:
+            credentials_path: Path to your Google service account JSON file
+        """
+        self.credentials_path = credentials_path
+        self.gc = None
+        self.setup_client()
+    
+    def setup_client(self):
+        """Setup Google Sheets client"""
+        try:
+            if self.credentials_path:
+                # Use service account credentials
+                credentials = Credentials.from_service_account_file(
+                    self.credentials_path,
+                    scopes=[
+                        'https://www.googleapis.com/auth/spreadsheets',
+                        'https://www.googleapis.com/auth/drive'
+                    ]
+                )
+                self.gc = gspread.authorize(credentials)
+            else:
+                # Use default authentication (for development)
+                self.gc = gspread.service_account()
+            
+            logger.info("Google Sheets client initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Error setting up Google Sheets client: {e}")
+            self.gc = None
+    
+    # def get_data(self, sheet_id: str, worksheet_name: str = "Orders") -> pd.DataFrame:
+    #     """
+    #     Get data from Google Sheets - adapted from your existing code
+        
+    #     Args:
+    #         sheet_id: Google Sheet ID
+    #         worksheet_name: Name of the worksheet
+            
+    #     Returns:
+    #         pandas DataFrame with the sheet data
+    #     """
+    #     try:
+    #         if not self.gc:
+    #             raise Exception("Google Sheets client not initialized")
+            
+    #         # Open the spreadsheet
+    #         spreadsheet = self.gc.open_by_key(sheet_id)
+    #         worksheet = spreadsheet.worksheet(worksheet_name)
+            
+    #         # Get all values
+    #         data = worksheet.get_all_values()
+            
+    #         if not data:
+    #             return pd.DataFrame()
+            
+    #         # Convert to DataFrame
+    #         df = pd.DataFrame(data)
+            
+    #         # Clean column names (from your original code)
+    #         if len(df) > 0:
+    #             df.columns = df.iloc[0].astype(str).str.strip()
+    #             df = df[1:].reset_index(drop=True)
+            
+    #         logger.info(f"Successfully loaded {len(df)} rows from {worksheet_name}")
+    #         return df
+            
+    #     except Exception as e:
+    #         logger.error(f"Error getting data from sheet: {e}")
+    #         return pd.DataFrame()
+
+
+    # def get_data(self, sheet_id: str, worksheet_name: str = "Orders") -> pd.DataFrame:
+    #     """
+    #     Get data from Google Sheets - using EXACT method from working Streamlit app
+        
+    #     Args:
+    #         sheet_id: Google Sheet ID
+    #         worksheet_name: Name of the worksheet
+            
+    #     Returns:
+    #         pandas DataFrame with the sheet data
+    #     """
+    #     try:
+    #         if not self.gc:
+    #             raise Exception("Google Sheets client not initialized")
+            
+    #         # Open the spreadsheet
+    #         spreadsheet = self.gc.open_by_key(sheet_id)
+    #         worksheet = spreadsheet.worksheet(worksheet_name)
+            
+    #         # Get all values
+    #         data = worksheet.get_all_values()
+            
+    #         if not data:
+    #             return pd.DataFrame()
+            
+    #         # Convert to DataFrame
+    #         df = pd.DataFrame(data)
+            
+    #         # EXACT method from your working Streamlit app
+    #         if len(df) > 0:
+    #             df.columns = df.iloc[0].str.strip()  # Strip whitespace from column names
+    #             df = df[1:]              # remove the now unnecessary row 0
+    #             df = df.reset_index(drop=True)  # reindex properly
+            
+    #         logger.info(f"Successfully loaded {len(df)} rows from {worksheet_name}")
+    #         return df
+            
+    #     except Exception as e:
+    #         logger.error(f"Error getting data from sheet: {e}")
+    #         return pd.DataFrame()
+
+    def get_data(self, sheet_id: str, worksheet_name: str = "Orders") -> pd.DataFrame:
+        """
+        Get data from Google Sheets - with debugging to find actual headers
+        """
+        try:
+            if not self.gc:
+                raise Exception("Google Sheets client not initialized")
+            
+            # Open the spreadsheet
+            spreadsheet = self.gc.open_by_key(sheet_id)
+            worksheet = spreadsheet.worksheet(worksheet_name)
+            
+            # Get all values
+            data = worksheet.get_all_values()
+            
+            if not data:
+                return pd.DataFrame()
+            
+            # DEBUG: Print first few rows to see the actual structure
+            print(f"DEBUG: First 5 rows of raw data:")
+            for i, row in enumerate(data[:5]):
+                print(f"Row {i}: {row[:10]}...")  # Show first 10 columns
+            
+            # Convert to DataFrame
+            df = pd.DataFrame(data)
+            
+            # Find the actual header row (look for 'Booth #' or 'Booth')
+            header_row = None
+            for i, row in enumerate(data):
+                if any('Booth' in str(cell) for cell in row):
+                    header_row = i
+                    print(f"DEBUG: Found header row at index {i}: {row[:10]}...")
+                    break
+            
+            if header_row is not None:
+                # Use the correct header row
+                df.columns = [str(col).strip() for col in data[header_row]]
+                df = df[header_row + 1:].reset_index(drop=True)
+            else:
+                # If no header found, use first row as fallback
+                print("DEBUG: No header row found, using first row")
+                df.columns = [str(col).strip() for col in df.iloc[0]]
+                df = df[1:].reset_index(drop=True)
+            
+            print(f"DEBUG: Final column names: {list(df.columns)}")
+            
+            logger.info(f"Successfully loaded {len(df)} rows from {worksheet_name}")
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error getting data from sheet: {e}")
+            return pd.DataFrame()    
+    
+    def get_worksheets(self, sheet_id: str) -> List[str]:
+        """
+        Get list of worksheet names
+        
+        Args:
+            sheet_id: Google Sheet ID
+            
+        Returns:
+            List of worksheet names
+        """
+        try:
+            if not self.gc:
+                return []
+            
+            spreadsheet = self.gc.open_by_key(sheet_id)
+            worksheets = [ws.title for ws in spreadsheet.worksheets()]
+            
+            logger.info(f"Found worksheets: {worksheets}")
+            return worksheets
+            
+        except Exception as e:
+            logger.error(f"Error getting worksheets: {e}")
+            return []
+    
+    def map_order_status(self, sheet_status: str) -> str:
+        """
+        Map Google Sheets status to API status format
+        
+        Args:
+            sheet_status: Status from Google Sheets
+            
+        Returns:
+            Mapped status for API
+        """
+        status_mapping = {
+            'Delivered': 'delivered',
+            'Received': 'delivered',
+            'Out for delivery': 'out-for-delivery',
+            'In route from warehouse': 'in-route',
+            'In Process': 'in-process',
+            'cancelled': 'cancelled',
+            'Cancelled': 'cancelled'
+        }
+        
+        return status_mapping.get(sheet_status, 'in-process')
+    
+    # def parse_orders_data(self, df: pd.DataFrame) -> List[Dict]:
+    #     """
+    #     Parse DataFrame and convert to order dictionaries
+        
+    #     Args:
+    #         df: DataFrame with orders data
+            
+    #     Returns:
+    #         List of order dictionaries
+    #     """
+    #     orders = []
+        
+    #     try:
+    #         for index, row in df.iterrows():
+    #             # Create order ID
+    #             booth_num = str(row.get('Booth #', '')).strip()
+    #             date = str(row.get('Date', '')).strip()
+    #             order_id = f"ORD-{date.replace('/', '-')}-{booth_num}"
+                
+    #             # Build order dictionary
+    #             order = {
+    #                 'id': order_id,
+    #                 'booth_number': booth_num,
+    #                 'exhibitor_name': str(row.get('Exhibitor Name ', '')).strip(),
+    #                 'item': str(row.get('Item ', '')).strip(),
+    #                 'description': f"{row.get('Item ', '')} - {row.get('Comments', '')}".strip(),
+    #                 'color': str(row.get('Color', '')).strip(),
+    #                 'quantity': self._safe_int(row.get('Quantity', 1)),
+    #                 'status': self.map_order_status(str(row.get('Status', '')).strip()),
+    #                 'order_date': str(row.get('Date', '')).strip(),
+    #                 'comments': str(row.get('Comments', '')).strip(),
+    #                 'section': str(row.get('Section ', '')).strip(),
+    #                 'type': str(row.get('Type', '')).strip(),
+    #                 'user': str(row.get('User', '')).strip(),
+    #                 'hour': str(row.get('Hour', '')).strip()
+    #             }
+                
+    #             # Only add if we have essential data
+    #             if order['booth_number'] and order['exhibitor_name']:
+    #                 orders.append(order)
+            
+    #         logger.info(f"Parsed {len(orders)} valid orders")
+    #         return orders
+            
+    #     except Exception as e:
+    #         logger.error(f"Error parsing orders data: {e}")
+    #         return []
+
+    def parse_orders_data(self, df: pd.DataFrame) -> List[Dict]:
+        """
+        Parse DataFrame and convert to order dictionaries
+        Using EXACT column names from working Streamlit app
+        """
+        orders = []
+        
+        try:
+            # DEBUG: Print column names
+            print(f"DEBUG: Column names: {list(df.columns)}")
+            
+            for index, row in df.iterrows():
+                # Use exact column names from your working Streamlit app
+                booth_num = str(row.get('Booth #', '')).strip()
+                section = str(row.get('Section', '')).strip()
+                exhibitor_name = str(row.get('Exhibitor Name', '')).strip()  # NO trailing space
+                item = str(row.get('Item', '')).strip()  # NO trailing space
+                color = str(row.get('Color', '')).strip()
+                quantity = str(row.get('Quantity', '')).strip()
+                date = str(row.get('Date', '')).strip()
+                hour = str(row.get('Hour', '')).strip()
+                status = str(row.get('Status', '')).strip()
+                type_field = str(row.get('Type', '')).strip()
+                comments = str(row.get('Comments', '')).strip()
+                user = str(row.get('User', '')).strip()
+                
+                # Skip rows without essential data
+                if not booth_num or not exhibitor_name:
+                    continue
+                
+                # Create order ID
+                order_id = f"ORD-{date.replace('/', '-')}-{booth_num}-{index}"
+                
+                # Build order dictionary
+                order = {
+                    'id': order_id,
+                    'booth_number': booth_num,
+                    'exhibitor_name': exhibitor_name,
+                    'item': item,
+                    'description': f"Order from Google Sheets: {item}",
+                    'color': color,
+                    'quantity': self._safe_int(quantity),
+                    'status': self.map_order_status(status),
+                    'order_date': date,
+                    'comments': comments,
+                    'section': section,
+                    'type': type_field,
+                    'user': user,
+                    'hour': hour,
+                    'abacus_ai_processed': True,
+                    'data_source': 'Google Sheets via Abacus AI'
+                }
+                
+                orders.append(order)
+            
+            logger.info(f"Parsed {len(orders)} valid orders from Google Sheets")
+            return orders
+            
+        except Exception as e:
+            logger.error(f"Error parsing orders data: {e}")
+            return []
+
+
+    
+    def _safe_int(self, value, default=1):
+        """Safely convert value to int"""
+        try:
+            return int(float(str(value))) if value else default
+        except (ValueError, TypeError):
+            return default
+    
+    def get_orders_for_exhibitor(self, sheet_id: str, exhibitor_name: str) -> List[Dict]:
+        """
+        Get all orders for a specific exhibitor
+        
+        Args:
+            sheet_id: Google Sheet ID
+            exhibitor_name: Name of the exhibitor
+            
+        Returns:
+            List of orders for the exhibitor
+        """
+        try:
+            # Get data from main Orders sheet
+            df = self.get_data(sheet_id, "Orders")
+            
+            if df.empty:
+                logger.warning("No data found in Orders sheet")
+                return []
+            
+            # Parse all orders
+            all_orders = self.parse_orders_data(df)
+            
+            # Filter by exhibitor name (case-insensitive)
+            exhibitor_orders = [
+                order for order in all_orders 
+                if order['exhibitor_name'].lower() == exhibitor_name.lower()
+            ]
+            
+            logger.info(f"Found {len(exhibitor_orders)} orders for {exhibitor_name}")
+            return exhibitor_orders
+            
+        except Exception as e:
+            logger.error(f"Error getting orders for exhibitor {exhibitor_name}: {e}")
+            return []
+    
+    def get_all_exhibitors(self, sheet_id: str) -> List[Dict]:
+        """
+        Get list of all exhibitors with their order counts
+        
+        Args:
+            sheet_id: Google Sheet ID
+            
+        Returns:
+            List of exhibitor dictionaries
+        """
+        try:
+            df = self.get_data(sheet_id, "Orders")
+            
+            if df.empty:
+                return []
+            
+            all_orders = self.parse_orders_data(df)
+            
+            # Group by exhibitor
+            exhibitors = {}
+            for order in all_orders:
+                name = order['exhibitor_name']
+                booth = order['booth_number']
+                
+                if name not in exhibitors:
+                    exhibitors[name] = {
+                        'name': name,
+                        'booth': booth,
+                        'total_orders': 0,
+                        'delivered_orders': 0
+                    }
+                
+                exhibitors[name]['total_orders'] += 1
+                if order['status'] == 'delivered':
+                    exhibitors[name]['delivered_orders'] += 1
+            
+            return list(exhibitors.values())
+            
+        except Exception as e:
+            logger.error(f"Error getting exhibitors: {e}")
+            return []
+
+# Example usage and testing
+def test_sheets_integration():
+    """Test the Google Sheets integration"""
+    
+    # Initialize manager
+    manager = GoogleSheetsManager()
+    
+    # Your sheet ID
+    sheet_id = "1dYeok-Dy_7a03AhPDLV2NNmGbRNoCD3q0zaAHPwxxCE"
+    
+    try:
+        # Test getting all exhibitors
+        print("Testing exhibitors retrieval...")
+        exhibitors = manager.get_all_exhibitors(sheet_id)
+        print(f"Found {len(exhibitors)} exhibitors:")
+        for exhibitor in exhibitors:
+            print(f"  - {exhibitor['name']} (Booth {exhibitor['booth']}): {exhibitor['total_orders']} orders")
+        
+        # Test getting orders for specific exhibitor
+        if exhibitors:
+            test_exhibitor = exhibitors[0]['name']
+            print(f"\nTesting orders for {test_exhibitor}...")
+            orders = manager.get_orders_for_exhibitor(sheet_id, test_exhibitor)
+            print(f"Found {len(orders)} orders for {test_exhibitor}")
+            
+            if orders:
+                print("Sample order:")
+                print(f"  - {orders[0]['item']} (Status: {orders[0]['status']})")
+        
+    except Exception as e:
+        print(f"Test failed: {e}")
+
+if __name__ == "__main__":
+    test_sheets_integration()
