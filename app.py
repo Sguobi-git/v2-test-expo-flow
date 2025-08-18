@@ -1,3 +1,14 @@
+
+from flask import Flask, jsonify, request, send_from_directory, send_file
+from flask_cors import CORS
+from datetime import datetime, timedelta
+import time
+import logging
+import os
+import json
+
+
+
 @app.route('/api/checklist/booth/<booth_number>', methods=['GET'])
 def get_checklist_by_booth(booth_number):
     """Get checklist items for a specific booth number with progress calculation"""
@@ -221,13 +232,8 @@ def get_mock_checklist():
         {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 1, 'name': 'BeMatrix Structure with White Double Fabric Walls', 'special_instructions': '', 'status': True, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
         {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 1, 'name': 'Rectangular White Table', 'special_instructions': '', 'status': True, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
     ]
-from flask import Flask, jsonify, request, send_from_directory, send_file
-from flask_cors import CORS
-from datetime import datetime, timedelta
-import time
-import logging
-import os
-import json
+
+
 
 # Import the Google Sheets manager (from your existing code)
 try:
