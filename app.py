@@ -220,7 +220,8 @@ def get_mock_checklist():
         {'booth_number': '101', 'section': 'Section 1', 'exhibitor_name': 'Pure Beauty Labs, LLC', 'quantity': 1, 'name': 'TV Rental - 55" with Wall Mount Brackets', 'special_instructions': '', 'status': False, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
         {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 1, 'name': 'BeMatrix Structure with White Double Fabric Walls', 'special_instructions': '', 'status': True, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
         {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity': 1, 'name': 'Rectangular White Table', 'special_instructions': '', 'status': True, 'date': '', 'hour': '', 'data_source': 'Mock Data'},
-        {'booth_number': '100', 'section': 'Section 1', 'exhibitor_name': 'APACKAGING GROUP, LLC', 'quantity':from flask import Flask, jsonify, request, send_from_directory, send_file
+
+from flask import Flask, jsonify, request, send_from_directory, send_file
 from flask_cors import CORS
 from datetime import datetime, timedelta
 import time
