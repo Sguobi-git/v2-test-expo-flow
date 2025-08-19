@@ -184,7 +184,7 @@ def parse_chatllm_checklist_data(json_data, booth_number=None):
     for idx, row in enumerate(json_data):
         try:
             # Get booth number
-            booth_num = str(row.get('Booth #', row.get('booth_number', row.get('Booth', ''))).strip()
+            booth_num = str(row.get('Booth #', row.get('booth_number', row.get('Booth', '')))).strip()
             
             # Filter by booth number if specified
             if booth_number and booth_num != str(booth_number):
