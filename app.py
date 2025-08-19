@@ -87,9 +87,9 @@ CHECKLIST_DATASET_ID = "7a88a4bc0"
 CHECKLIST_FEATURE_GROUP_ID = "236a2273a"
 CHECKLIST_PROJECT_ID = "16b4367d2c"  # Same ChatLLM project as orders
 
-def query_abacus_checklist_via_chatllm(booth_number=None, force_refresh=False):
-    """Query Abacus AI for checklist data using ChatLLM approach - same as orders"""
-    logger.info(f"🔍 Starting ChatLLM checklist query for booth: {booth_number}")
+def query_abacus_checklist(booth_number=None, force_refresh=False):
+    """Query Abacus AI for checklist data using EXACT same approach as orders"""
+    logger.info(f"🔍 Starting checklist query for booth: {booth_number}")
     
     try:
         # Get API key from environment
@@ -100,7 +100,7 @@ def query_abacus_checklist_via_chatllm(booth_number=None, force_refresh=False):
         
         logger.info(f"✅ API Key found: {api_key[:10]}...")
         
-        # Import abacusai client (same as orders)
+        # Import abacusai client (EXACT same as orders)
         try:
             from abacusai import ApiClient
         except ImportError:
@@ -109,162 +109,148 @@ def query_abacus_checklist_via_chatllm(booth_number=None, force_refresh=False):
         
         client = ApiClient(api_key)
         
-        # Create chat session (same approach as orders)
-        session = client.create_chat_session(CHECKLIST_PROJECT_ID)
+        # Use EXACT same project ID as orders
+        project_id = "16b4367d2c"  # Same ChatLLM project as orders
+        
+        # Create chat session (EXACT same as orders)
+        session = client.create_chat_session(project_id)
         logger.info(f"✅ Created chat session: {session.chat_session_id}")
         
-        # Build query based on booth number
+        # Build query - ONLY difference is we ask for "checklist" instead of "orders"
         if booth_number:
-            query = f"""Show me all checklist items for booth number {booth_number} from the checklist sheet. 
-            Format the response as a JSON array with these exact fields:
-            - Booth #
-            - Section
-            - Exhibitor Name
-            - Quantity
-            - Item Name
-            - Special Instructions
-            - Status (TRUE/FALSE)
-            - Date
-            - Hour
+            query = f"""Show me all items for booth number {booth_number} from the checklist sheet (not the orders sheet, the checklist sheet). 
+            Return as a simple table format with these columns:
+            Booth #, Section, Exhibitor Name, Quantity, Item Name, Special Instructions, Status, Date, Hour
             
-            Return only the JSON data, no explanatory text."""
+            Only show items where Booth # = {booth_number}"""
         else:
-            query = """Show me the first 20 rows from the checklist sheet. 
-            Format the response as a JSON array with these exact fields:
-            - Booth #
-            - Section
-            - Exhibitor Name
-            - Quantity
-            - Item Name
-            - Special Instructions
-            - Status (TRUE/FALSE)
-            - Date
-            - Hour
-            
-            Return only the JSON data, no explanatory text."""
+            query = """Show me the first 20 rows from the checklist sheet (not the orders sheet). 
+            Return as a simple table format with these columns:
+            Booth #, Section, Exhibitor Name, Quantity, Item Name, Special Instructions, Status, Date, Hour"""
         
-        # Get response from ChatLLM
+        # Get response from ChatLLM (EXACT same as orders)
         response = client.get_chat_response(session.chat_session_id, query)
         logger.info(f"📋 ChatLLM Response received: {len(response.content)} characters")
+        logger.info(f"📋 Response preview: {response.content[:200]}...")
         
-        # Parse the JSON response
-        import json
-        try:
-            # Extract JSON from response - sometimes it's wrapped in markdown
-            content = response.content.strip()
-            if content.startswith('```json'):
-                content = content.replace('```json', '').replace('```', '').strip()
-            elif content.startswith('```'):
-                content = content.replace('```', '').strip()
-            
-            # Parse JSON
-            json_data = json.loads(content)
-            logger.info(f"✅ Successfully parsed JSON: {len(json_data)} items")
-            
-            # Convert to our format
-            return parse_chatllm_checklist_data(json_data, booth_number)
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"❌ JSON parsing failed: {e}")
-            logger.error(f"Raw response: {response.content[:500]}")
-            
-            # Try to extract data from text format
-            return parse_text_checklist_response(response.content, booth_number)
+        # Parse the response (same logic as orders but for checklist format)
+        return parse_checklist_response(response.content, booth_number)
             
     except Exception as e:
         logger.error(f"❌ ChatLLM checklist query failed: {str(e)}")
         return get_mock_checklist(booth_number)
 
-def parse_chatllm_checklist_data(json_data, booth_number=None):
-    """Parse checklist data from ChatLLM JSON response"""
-    logger.info(f"🔍 Parsing ChatLLM checklist data for booth: {booth_number}")
+def parse_checklist_response(response_content, booth_number=None):
+    """Parse checklist response - EXACT same logic as orders parsing"""
+    logger.info(f"🔍 Parsing checklist response for booth: {booth_number}")
     
     checklist_items = []
     
-    for idx, row in enumerate(json_data):
-        try:
-            # Get booth number
-            booth_num = str(row.get('Booth #', row.get('booth_number', row.get('Booth', '')))).strip()
-            
-            # Filter by booth number if specified
-            if booth_number and booth_num != str(booth_number):
+    try:
+        # Split response into lines (same as orders)
+        lines = response_content.strip().split('\n')
+        
+        # Find header line and data lines (same pattern as orders)
+        header_found = False
+        header_indices = {}
+        
+        for line_idx, line in enumerate(lines):
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Look for header line (same logic as orders)
+            if not header_found and ('Booth' in line or 'booth' in line):
+                # Parse header to find column positions
+                headers = [h.strip() for h in line.split('|') if h.strip()]
+                for i, header in enumerate(headers):
+                    header_lower = header.lower().replace('#', '').replace(' ', '')
+                    if 'booth' in header_lower:
+                        header_indices['booth'] = i
+                    elif 'section' in header_lower:
+                        header_indices['section'] = i
+                    elif 'exhibitor' in header_lower or 'name' in header_lower:
+                        header_indices['exhibitor'] = i
+                    elif 'quantity' in header_lower:
+                        header_indices['quantity'] = i
+                    elif 'item' in header_lower:
+                        header_indices['item'] = i
+                    elif 'instruction' in header_lower:
+                        header_indices['instructions'] = i
+                    elif 'status' in header_lower:
+                        header_indices['status'] = i
+                    elif 'date' in header_lower:
+                        header_indices['date'] = i
+                    elif 'hour' in header_lower or 'time' in header_lower:
+                        header_indices['hour'] = i
+                
+                header_found = True
+                logger.info(f"📋 Found header at line {line_idx}: {header_indices}")
                 continue
             
-            # Handle status - could be "TRUE"/"FALSE" or True/False
-            status_value = row.get('Status', False)
-            if isinstance(status_value, str):
-                completed = status_value.upper() in ['TRUE', 'CHECKED', 'YES', '1']
-            else:
-                completed = bool(status_value)
-            
-            # Create checklist item
-            item = {
-                'id': f"CHK-{booth_num}-{len(checklist_items) + 1:03d}",
-                'booth_number': booth_num,
-                'section': row.get('Section', ''),
-                'exhibitor_name': row.get('Exhibitor Name', ''),
-                'quantity': int(row.get('Quantity', 0)) if row.get('Quantity') else 0,
-                'item_name': row.get('Item Name', ''),
-                'special_instructions': row.get('Special Instructions', ''),
-                'status': completed,
-                'date': row.get('Date', ''),
-                'hour': row.get('Hour', ''),
-                'completed': completed,
-                'priority': 1 if not completed else 5
-            }
-            
-            checklist_items.append(item)
-            logger.info(f"✅ Added checklist item: {item['item_name']} (completed: {completed})")
-            
-        except Exception as e:
-            logger.error(f"❌ Error parsing checklist row {idx}: {e}")
-            continue
-    
-    logger.info(f"🎯 Successfully parsed {len(checklist_items)} checklist items for booth {booth_number}")
-    return checklist_items
-
-def parse_text_checklist_response(text_response, booth_number=None):
-    """Fallback: Parse text-based response if JSON fails"""
-    logger.info("🔄 Attempting to parse text-based checklist response")
-    
-    try:
-        lines = text_response.split('\n')
-        checklist_items = []
+            # Process data lines (same logic as orders)
+            if header_found and '|' in line:
+                try:
+                    columns = [col.strip() for col in line.split('|')]
+                    
+                    # Extract booth number
+                    booth_col = header_indices.get('booth', 0)
+                    if booth_col < len(columns):
+                        row_booth = columns[booth_col].strip()
+                        
+                        # Filter by booth number if specified (same as orders)
+                        if booth_number and str(row_booth) != str(booth_number):
+                            continue
+                        
+                        # Extract other fields
+                        section = columns[header_indices.get('section', 1)] if header_indices.get('section', 1) < len(columns) else ''
+                        exhibitor = columns[header_indices.get('exhibitor', 2)] if header_indices.get('exhibitor', 2) < len(columns) else ''
+                        quantity_str = columns[header_indices.get('quantity', 3)] if header_indices.get('quantity', 3) < len(columns) else '1'
+                        item_name = columns[header_indices.get('item', 4)] if header_indices.get('item', 4) < len(columns) else ''
+                        instructions = columns[header_indices.get('instructions', 5)] if header_indices.get('instructions', 5) < len(columns) else ''
+                        status_str = columns[header_indices.get('status', 6)] if header_indices.get('status', 6) < len(columns) else 'FALSE'
+                        date_str = columns[header_indices.get('date', 7)] if header_indices.get('date', 7) < len(columns) else ''
+                        hour_str = columns[header_indices.get('hour', 8)] if header_indices.get('hour', 8) < len(columns) else ''
+                        
+                        # Parse quantity (same as orders)
+                        try:
+                            quantity = int(quantity_str)
+                        except:
+                            quantity = 1
+                        
+                        # Parse status (TRUE/FALSE to boolean)
+                        status_cleaned = status_str.upper().strip()
+                        completed = status_cleaned in ['TRUE', 'CHECKED', 'YES', '1', 'COMPLETE', 'DONE']
+                        
+                        # Create checklist item (same structure as orders)
+                        item = {
+                            'id': f"CHK-{row_booth}-{len(checklist_items) + 1:03d}",
+                            'booth_number': str(row_booth),
+                            'section': section,
+                            'exhibitor_name': exhibitor,
+                            'quantity': quantity,
+                            'item_name': item_name,
+                            'special_instructions': instructions,
+                            'status': completed,
+                            'date': date_str,
+                            'hour': hour_str,
+                            'completed': completed,
+                            'priority': 1 if not completed else 5
+                        }
+                        
+                        checklist_items.append(item)
+                        logger.info(f"✅ Added checklist item: {item_name} (completed: {completed})")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Error parsing checklist line: {line} - {e}")
+                    continue
         
-        for line in lines:
-            # Look for lines that might contain booth data
-            if booth_number and str(booth_number) in line:
-                # Try to extract basic info from the line
-                # This is a fallback, so we'll create a basic item
-                item = {
-                    'id': f"CHK-{booth_number}-{len(checklist_items) + 1:03d}",
-                    'booth_number': str(booth_number),
-                    'section': 'Section 1',
-                    'exhibitor_name': f'Booth {booth_number} Exhibitor',
-                    'quantity': 1,
-                    'item_name': line.strip(),
-                    'special_instructions': '',
-                    'status': False,
-                    'date': '',
-                    'hour': '',
-                    'completed': False,
-                    'priority': 1
-                }
-                checklist_items.append(item)
+        logger.info(f"🎯 Successfully parsed {len(checklist_items)} checklist items for booth {booth_number}")
+        return checklist_items
         
-        if checklist_items:
-            logger.info(f"✅ Extracted {len(checklist_items)} items from text response")
-            return checklist_items
-            
     except Exception as e:
-        logger.error(f"❌ Text parsing failed: {e}")
-    
-    # Final fallback
-    return get_mock_checklist(booth_number)
-
-def query_abacus_checklist(booth_number=None, force_refresh=False):
-    """Main function that uses ChatLLM approach like orders"""
-    return query_abacus_checklist_via_chatllm(booth_number, force_refresh)
+        logger.error(f"❌ Error parsing checklist response: {e}")
+        return get_mock_checklist(booth_number)
 
 def get_mock_checklist(booth_number=None):
     """Mock checklist data for testing"""
