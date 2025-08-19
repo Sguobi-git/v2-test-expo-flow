@@ -88,126 +88,176 @@ CHECKLIST_FEATURE_GROUP_ID = "236a2273a"
 
 def query_abacus_checklist(booth_number=None, force_refresh=False):
     """Query Abacus AI for checklist data"""
+    logger.info(f"🔍 Starting Abacus AI query for booth: {booth_number}")
+    
     try:
         # Get API key from environment
         api_key = os.environ.get('ABACUS_API_KEY')
         if not api_key:
-            logger.warning("Abacus API key not found, using mock data")
+            logger.error("❌ ABACUS_API_KEY not found in environment variables")
             return get_mock_checklist(booth_number)
+        
+        logger.info(f"✅ API Key found: {api_key[:10]}...")
         
         headers = {
             'Authorization': f'Bearer {api_key}',
             'Content-Type': 'application/json'
         }
         
-        # Query the feature group using the correct Abacus AI endpoint
-        endpoint = f"{ABACUS_API_BASE}/api/v0/deployments/search"
-        
-        # Build query based on booth number - try different approaches
-        if booth_number:
-            # Try exact match first
-            query_data = {
-                "deploymentId": CHECKLIST_FEATURE_GROUP_ID,
-                "query": f"Booth # == '{booth_number}'",
-                "limit": 100
+        # Try multiple endpoint approaches
+        endpoints_to_try = [
+            # Approach 1: Feature group lookup
+            {
+                'url': f"{ABACUS_API_BASE}/api/v0/featureGroups/{CHECKLIST_FEATURE_GROUP_ID}/lookup",
+                'data': {"limit": 100}
+            },
+            # Approach 2: Feature group query 
+            {
+                'url': f"{ABACUS_API_BASE}/api/v0/featureGroups/{CHECKLIST_FEATURE_GROUP_ID}/query",
+                'data': {"limit": 100}
+            },
+            # Approach 3: Direct dataset query
+            {
+                'url': f"{ABACUS_API_BASE}/api/v0/datasets/{CHECKLIST_DATASET_ID}/query",
+                'data': {"limit": 100}
             }
-        else:
-            query_data = {
-                "deploymentId": CHECKLIST_FEATURE_GROUP_ID,
-                "query": "*",
-                "limit": 1000
-            }
+        ]
         
-        logger.info(f"Querying Abacus AI with: {query_data}")
-        response = requests.post(endpoint, headers=headers, json=query_data, timeout=30)
+        for i, endpoint_config in enumerate(endpoints_to_try):
+            try:
+                logger.info(f"🔄 Trying endpoint {i+1}: {endpoint_config['url']}")
+                
+                response = requests.post(
+                    endpoint_config['url'], 
+                    headers=headers, 
+                    json=endpoint_config['data'], 
+                    timeout=30
+                )
+                
+                logger.info(f"📡 Response status: {response.status_code}")
+                logger.info(f"📡 Response headers: {dict(response.headers)}")
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    logger.info(f"✅ SUCCESS! Data received: {len(str(data))} characters")
+                    logger.info(f"📊 Data structure: {list(data.keys()) if isinstance(data, dict) else type(data)}")
+                    
+                    # Try to parse the data
+                    parsed_data = parse_checklist_data(data, booth_number)
+                    if parsed_data:
+                        logger.info(f"🎯 Parsed {len(parsed_data)} checklist items")
+                        return parsed_data
+                    else:
+                        logger.warning(f"⚠️ No items parsed from response")
+                        
+                else:
+                    logger.error(f"❌ Endpoint {i+1} failed: {response.status_code}")
+                    logger.error(f"❌ Error response: {response.text[:500]}")
+                    
+            except Exception as e:
+                logger.error(f"❌ Endpoint {i+1} exception: {str(e)}")
+                continue
         
-        if response.status_code == 200:
-            data = response.json()
-            logger.info(f"Abacus AI response: {data}")
-            return parse_checklist_data(data.get('data', []), booth_number)
-        else:
-            logger.error(f"Abacus API error: {response.status_code} - {response.text}")
-            # Try alternative endpoint
-            return try_alternative_abacus_query(booth_number, headers)
-            
-    except Exception as e:
-        logger.error(f"Error querying Abacus checklist: {e}")
+        # If all endpoints fail, log the issue and return mock data
+        logger.error("❌ All Abacus AI endpoints failed, using mock data")
         return get_mock_checklist(booth_number)
-
-def try_alternative_abacus_query(booth_number, headers):
-    """Try alternative Abacus AI query methods"""
-    try:
-        # Try feature group query endpoint
-        endpoint = f"{ABACUS_API_BASE}/api/v0/featureGroups/{CHECKLIST_FEATURE_GROUP_ID}/query"
-        
-        query_data = {
-            "limit": 1000
-        }
-        
-        if booth_number:
-            query_data["filters"] = [
-                {
-                    "column": "Booth #",
-                    "operator": "==",
-                    "value": str(booth_number)
-                }
-            ]
-        
-        response = requests.post(endpoint, headers=headers, json=query_data, timeout=30)
-        
-        if response.status_code == 200:
-            data = response.json()
-            logger.info(f"Alternative Abacus AI response: {data}")
-            return parse_checklist_data(data.get('data', []), booth_number)
-        else:
-            logger.error(f"Alternative Abacus API error: {response.status_code} - {response.text}")
-            return get_mock_checklist(booth_number)
             
     except Exception as e:
-        logger.error(f"Error in alternative Abacus query: {e}")
+        logger.error(f"❌ Critical error in Abacus query: {str(e)}")
         return get_mock_checklist(booth_number)
 
 def parse_checklist_data(raw_data, booth_number=None):
     """Parse checklist data from Abacus AI response"""
+    logger.info(f"🔍 Parsing checklist data for booth: {booth_number}")
+    logger.info(f"📊 Raw data type: {type(raw_data)}")
+    
     checklist_items = []
     
-    for row in raw_data:
+    # Handle different response formats
+    data_to_process = []
+    
+    if isinstance(raw_data, dict):
+        # Check for common data keys
+        possible_keys = ['data', 'results', 'rows', 'items', 'records']
+        for key in possible_keys:
+            if key in raw_data:
+                data_to_process = raw_data[key]
+                logger.info(f"📦 Found data in key '{key}': {len(data_to_process) if isinstance(data_to_process, list) else type(data_to_process)}")
+                break
+        
+        if not data_to_process:
+            # Maybe the whole dict is the data
+            if 'Booth #' in raw_data or 'booth_number' in raw_data:
+                data_to_process = [raw_data]
+                logger.info(f"📦 Using whole dict as single record")
+            else:
+                logger.warning(f"⚠️ No recognizable data structure found. Keys: {list(raw_data.keys())}")
+                return []
+    elif isinstance(raw_data, list):
+        data_to_process = raw_data
+        logger.info(f"📦 Processing list with {len(data_to_process)} items")
+    else:
+        logger.warning(f"⚠️ Unexpected data type: {type(raw_data)}")
+        return []
+    
+    # Process each row
+    for idx, row in enumerate(data_to_process):
         try:
-            # Handle different possible response formats
-            if isinstance(row, dict):
-                booth_num = str(row.get('Booth #', row.get('booth_number', row.get('Booth', ''))))
-                
-                # Filter by booth number if specified
-                if booth_number and booth_num != str(booth_number):
-                    continue
-                
-                # Handle status - could be "TRUE"/"FALSE" or True/False or "checked"/"unchecked"
-                status_value = row.get('Status', False)
-                if isinstance(status_value, str):
-                    completed = status_value.upper() in ['TRUE', 'CHECKED', 'YES', '1']
-                else:
-                    completed = bool(status_value)
-                
-                item = {
-                    'id': f"CHK-{booth_num}-{len(checklist_items) + 1}",
-                    'booth_number': booth_num,
-                    'section': row.get('Section', ''),
-                    'exhibitor_name': row.get('Exhibitor Name', ''),
-                    'quantity': int(row.get('Quantity', 0)) if row.get('Quantity') else 0,
-                    'item_name': row.get('Item Name', ''),
-                    'special_instructions': row.get('Special Instructions', ''),
-                    'status': completed,
-                    'date': row.get('Date', ''),
-                    'hour': row.get('Hour', ''),
-                    'completed': completed,
-                    'priority': 1 if not completed else 5  # Incomplete items have higher priority
-                }
-                checklist_items.append(item)
+            logger.info(f"🔍 Processing row {idx}: {row}")
+            
+            if not isinstance(row, dict):
+                logger.warning(f"⚠️ Skipping non-dict row {idx}: {type(row)}")
+                continue
+            
+            # Extract booth number with multiple possible field names
+            booth_num = None
+            booth_fields = ['Booth #', 'booth_number', 'Booth', 'booth', 'BoothNumber']
+            for field in booth_fields:
+                if field in row:
+                    booth_num = str(row[field]).strip()
+                    break
+            
+            if not booth_num:
+                logger.warning(f"⚠️ No booth number found in row {idx}")
+                continue
+            
+            # Filter by booth number if specified
+            if booth_number and booth_num != str(booth_number):
+                logger.info(f"🔄 Skipping booth {booth_num} (looking for {booth_number})")
+                continue
+            
+            # Handle status - could be "TRUE"/"FALSE" or True/False or "checked"/"unchecked"
+            status_value = row.get('Status', row.get('status', False))
+            if isinstance(status_value, str):
+                completed = status_value.upper() in ['TRUE', 'CHECKED', 'YES', '1']
+            else:
+                completed = bool(status_value)
+            
+            # Extract other fields
+            item = {
+                'id': f"CHK-{booth_num}-{len(checklist_items) + 1:03d}",
+                'booth_number': booth_num,
+                'section': row.get('Section', row.get('section', '')),
+                'exhibitor_name': row.get('Exhibitor Name', row.get('exhibitor_name', '')),
+                'quantity': int(row.get('Quantity', row.get('quantity', 0))) if row.get('Quantity') or row.get('quantity') else 0,
+                'item_name': row.get('Item Name', row.get('item_name', '')),
+                'special_instructions': row.get('Special Instructions', row.get('special_instructions', '')),
+                'status': completed,
+                'date': row.get('Date', row.get('date', '')),
+                'hour': row.get('Hour', row.get('hour', '')),
+                'completed': completed,
+                'priority': 1 if not completed else 5  # Incomplete items have higher priority
+            }
+            
+            checklist_items.append(item)
+            logger.info(f"✅ Added item: {item['item_name']} (completed: {completed})")
+            
         except Exception as e:
-            logger.error(f"Error parsing checklist row: {row} - Error: {e}")
+            logger.error(f"❌ Error parsing row {idx}: {e}")
+            logger.error(f"❌ Row data: {row}")
             continue
     
-    logger.info(f"Parsed {len(checklist_items)} checklist items for booth {booth_number}")
+    logger.info(f"🎯 Successfully parsed {len(checklist_items)} checklist items for booth {booth_number}")
     return checklist_items
 
 def get_mock_checklist(booth_number=None):
@@ -517,11 +567,14 @@ def get_all_orders():
 @app.route('/api/checklist/test', methods=['GET'])
 def test_abacus_connection():
     """Test Abacus AI connection and return debug info"""
+    booth_number = request.args.get('booth', '100')  # Default test booth
+    
     api_key = os.environ.get('ABACUS_API_KEY')
     if not api_key:
         return jsonify({
             'error': 'No ABACUS_API_KEY found in environment',
             'has_api_key': False,
+            'instructions': 'Set ABACUS_API_KEY environment variable',
             'test_data': get_mock_checklist('100')
         })
     
@@ -531,42 +584,79 @@ def test_abacus_connection():
             'Content-Type': 'application/json'
         }
         
-        # Test different endpoints
+        # Test different endpoints with detailed logging
         test_results = []
         
-        # Test 1: Feature group query
-        endpoint1 = f"{ABACUS_API_BASE}/api/v0/featureGroups/{CHECKLIST_FEATURE_GROUP_ID}/query"
-        try:
-            response1 = requests.post(endpoint1, headers=headers, json={"limit": 10}, timeout=10)
-            test_results.append({
-                'endpoint': endpoint1,
-                'status': response1.status_code,
-                'response': response1.text[:500] if response1.text else 'No response'
-            })
-        except Exception as e:
-            test_results.append({
-                'endpoint': endpoint1,
-                'error': str(e)
-            })
+        endpoints_to_test = [
+            {
+                'name': 'Feature Group Lookup',
+                'url': f"{ABACUS_API_BASE}/api/v0/featureGroups/{CHECKLIST_FEATURE_GROUP_ID}/lookup",
+                'data': {"limit": 10}
+            },
+            {
+                'name': 'Feature Group Query',
+                'url': f"{ABACUS_API_BASE}/api/v0/featureGroups/{CHECKLIST_FEATURE_GROUP_ID}/query", 
+                'data': {"limit": 10}
+            },
+            {
+                'name': 'Dataset Query',
+                'url': f"{ABACUS_API_BASE}/api/v0/datasets/{CHECKLIST_DATASET_ID}/query",
+                'data': {"limit": 10}
+            },
+            {
+                'name': 'Feature Group Query with Filter',
+                'url': f"{ABACUS_API_BASE}/api/v0/featureGroups/{CHECKLIST_FEATURE_GROUP_ID}/query",
+                'data': {
+                    "limit": 10,
+                    "filters": [{"column": "Booth #", "operator": "==", "value": booth_number}]
+                }
+            }
+        ]
         
-        # Test 2: Search endpoint
-        endpoint2 = f"{ABACUS_API_BASE}/api/v0/deployments/search"
-        try:
-            response2 = requests.post(endpoint2, headers=headers, json={
-                "deploymentId": CHECKLIST_FEATURE_GROUP_ID,
-                "query": "*",
-                "limit": 10
-            }, timeout=10)
-            test_results.append({
-                'endpoint': endpoint2,
-                'status': response2.status_code,
-                'response': response2.text[:500] if response2.text else 'No response'
-            })
-        except Exception as e:
-            test_results.append({
-                'endpoint': endpoint2,
-                'error': str(e)
-            })
+        for endpoint_config in endpoints_to_test:
+            try:
+                logger.info(f"🧪 Testing {endpoint_config['name']}")
+                response = requests.post(
+                    endpoint_config['url'], 
+                    headers=headers, 
+                    json=endpoint_config['data'], 
+                    timeout=15
+                )
+                
+                result = {
+                    'name': endpoint_config['name'],
+                    'url': endpoint_config['url'],
+                    'status': response.status_code,
+                    'success': response.status_code == 200
+                }
+                
+                if response.status_code == 200:
+                    try:
+                        data = response.json()
+                        result['data_type'] = type(data).__name__
+                        result['data_keys'] = list(data.keys()) if isinstance(data, dict) else 'not_dict'
+                        result['data_sample'] = str(data)[:200] + '...' if len(str(data)) > 200 else str(data)
+                        
+                        # Try to parse it
+                        parsed = parse_checklist_data(data, booth_number)
+                        result['parsed_items'] = len(parsed) if parsed else 0
+                        result['sample_items'] = parsed[:2] if parsed else []
+                        
+                    except Exception as parse_error:
+                        result['parse_error'] = str(parse_error)
+                        result['raw_response'] = response.text[:500]
+                else:
+                    result['error'] = response.text[:500]
+                    
+                test_results.append(result)
+                
+            except Exception as e:
+                test_results.append({
+                    'name': endpoint_config['name'],
+                    'url': endpoint_config['url'],
+                    'error': str(e),
+                    'success': False
+                })
         
         return jsonify({
             'has_api_key': True,
@@ -574,13 +664,20 @@ def test_abacus_connection():
             'dataset_id': CHECKLIST_DATASET_ID,
             'feature_group_id': CHECKLIST_FEATURE_GROUP_ID,
             'base_url': ABACUS_API_BASE,
-            'test_results': test_results
+            'test_booth': booth_number,
+            'test_results': test_results,
+            'summary': {
+                'total_tests': len(test_results),
+                'successful_tests': len([r for r in test_results if r.get('success')]),
+                'total_items_found': sum([r.get('parsed_items', 0) for r in test_results])
+            }
         })
         
     except Exception as e:
         return jsonify({
             'error': str(e),
-            'has_api_key': True
+            'has_api_key': True,
+            'api_key_preview': api_key[:10] + '...' if len(api_key) > 10 else api_key
         })
 
 @app.route('/api/checklist/booth/<booth_number>', methods=['GET'])
