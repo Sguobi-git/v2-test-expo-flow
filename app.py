@@ -82,7 +82,7 @@ ORDERS_SHEET_ID = "1zaRPHP3k-K1L0z3Bi_Wk--S1Xe2erOAAVYp78h18UUI"
 CHECKLIST_SHEET_ID = "1jkeob2XkPLBDgqqQqjKeQXq686EmxQhenEET8yuKvlk"
 
 # Abacus AI Configuration for Checklist
-ABACUS_API_BASE = "https://api.abacus.ai"
+ABACUS_API_BASE = "https://cloud.abacus.ai"
 CHECKLIST_DATASET_ID = "7a88a4bc0"
 CHECKLIST_FEATURE_GROUP_ID = "236a2273a"
 
@@ -100,10 +100,46 @@ def query_abacus_checklist(booth_number=None, force_refresh=False):
             'Content-Type': 'application/json'
         }
         
-        # Query the feature group
+        # Query the feature group using the correct Abacus AI endpoint
+        endpoint = f"{ABACUS_API_BASE}/api/v0/deployments/search"
+        
+        # Build query based on booth number - try different approaches
+        if booth_number:
+            # Try exact match first
+            query_data = {
+                "deploymentId": CHECKLIST_FEATURE_GROUP_ID,
+                "query": f"Booth # == '{booth_number}'",
+                "limit": 100
+            }
+        else:
+            query_data = {
+                "deploymentId": CHECKLIST_FEATURE_GROUP_ID,
+                "query": "*",
+                "limit": 1000
+            }
+        
+        logger.info(f"Querying Abacus AI with: {query_data}")
+        response = requests.post(endpoint, headers=headers, json=query_data, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            logger.info(f"Abacus AI response: {data}")
+            return parse_checklist_data(data.get('data', []), booth_number)
+        else:
+            logger.error(f"Abacus API error: {response.status_code} - {response.text}")
+            # Try alternative endpoint
+            return try_alternative_abacus_query(booth_number, headers)
+            
+    except Exception as e:
+        logger.error(f"Error querying Abacus checklist: {e}")
+        return get_mock_checklist(booth_number)
+
+def try_alternative_abacus_query(booth_number, headers):
+    """Try alternative Abacus AI query methods"""
+    try:
+        # Try feature group query endpoint
         endpoint = f"{ABACUS_API_BASE}/api/v0/featureGroups/{CHECKLIST_FEATURE_GROUP_ID}/query"
         
-        # Build query based on booth number
         query_data = {
             "limit": 1000
         }
@@ -112,7 +148,7 @@ def query_abacus_checklist(booth_number=None, force_refresh=False):
             query_data["filters"] = [
                 {
                     "column": "Booth #",
-                    "operator": "EQUALS",
+                    "operator": "==",
                     "value": str(booth_number)
                 }
             ]
@@ -121,40 +157,57 @@ def query_abacus_checklist(booth_number=None, force_refresh=False):
         
         if response.status_code == 200:
             data = response.json()
-            return parse_checklist_data(data.get('data', []))
+            logger.info(f"Alternative Abacus AI response: {data}")
+            return parse_checklist_data(data.get('data', []), booth_number)
         else:
-            logger.error(f"Abacus API error: {response.status_code} - {response.text}")
+            logger.error(f"Alternative Abacus API error: {response.status_code} - {response.text}")
             return get_mock_checklist(booth_number)
             
     except Exception as e:
-        logger.error(f"Error querying Abacus checklist: {e}")
+        logger.error(f"Error in alternative Abacus query: {e}")
         return get_mock_checklist(booth_number)
 
-def parse_checklist_data(raw_data):
+def parse_checklist_data(raw_data, booth_number=None):
     """Parse checklist data from Abacus AI response"""
     checklist_items = []
     
     for row in raw_data:
         try:
-            item = {
-                'id': f"CHK-{row.get('Booth #', 'N/A')}-{len(checklist_items) + 1}",
-                'booth_number': str(row.get('Booth #', '')),
-                'section': row.get('Section', ''),
-                'exhibitor_name': row.get('Exhibitor Name', ''),
-                'quantity': int(row.get('Quantity', 0)) if row.get('Quantity') else 0,
-                'item_name': row.get('Item Name', ''),
-                'special_instructions': row.get('Special Instructions', ''),
-                'status': bool(row.get('Status', False)),
-                'date': row.get('Date', ''),
-                'hour': row.get('Hour', ''),
-                'completed': bool(row.get('Status', False)),
-                'priority': 1 if not bool(row.get('Status', False)) else 5  # Incomplete items have higher priority
-            }
-            checklist_items.append(item)
+            # Handle different possible response formats
+            if isinstance(row, dict):
+                booth_num = str(row.get('Booth #', row.get('booth_number', row.get('Booth', ''))))
+                
+                # Filter by booth number if specified
+                if booth_number and booth_num != str(booth_number):
+                    continue
+                
+                # Handle status - could be "TRUE"/"FALSE" or True/False or "checked"/"unchecked"
+                status_value = row.get('Status', False)
+                if isinstance(status_value, str):
+                    completed = status_value.upper() in ['TRUE', 'CHECKED', 'YES', '1']
+                else:
+                    completed = bool(status_value)
+                
+                item = {
+                    'id': f"CHK-{booth_num}-{len(checklist_items) + 1}",
+                    'booth_number': booth_num,
+                    'section': row.get('Section', ''),
+                    'exhibitor_name': row.get('Exhibitor Name', ''),
+                    'quantity': int(row.get('Quantity', 0)) if row.get('Quantity') else 0,
+                    'item_name': row.get('Item Name', ''),
+                    'special_instructions': row.get('Special Instructions', ''),
+                    'status': completed,
+                    'date': row.get('Date', ''),
+                    'hour': row.get('Hour', ''),
+                    'completed': completed,
+                    'priority': 1 if not completed else 5  # Incomplete items have higher priority
+                }
+                checklist_items.append(item)
         except Exception as e:
-            logger.error(f"Error parsing checklist row: {e}")
+            logger.error(f"Error parsing checklist row: {row} - Error: {e}")
             continue
     
+    logger.info(f"Parsed {len(checklist_items)} checklist items for booth {booth_number}")
     return checklist_items
 
 def get_mock_checklist(booth_number=None):
