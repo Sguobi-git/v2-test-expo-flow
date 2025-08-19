@@ -514,6 +514,75 @@ def get_all_orders():
     return jsonify(orders)
 
 # NEW CHECKLIST ENDPOINTS
+@app.route('/api/checklist/test', methods=['GET'])
+def test_abacus_connection():
+    """Test Abacus AI connection and return debug info"""
+    api_key = os.environ.get('ABACUS_API_KEY')
+    if not api_key:
+        return jsonify({
+            'error': 'No ABACUS_API_KEY found in environment',
+            'has_api_key': False,
+            'test_data': get_mock_checklist('100')
+        })
+    
+    try:
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        # Test different endpoints
+        test_results = []
+        
+        # Test 1: Feature group query
+        endpoint1 = f"{ABACUS_API_BASE}/api/v0/featureGroups/{CHECKLIST_FEATURE_GROUP_ID}/query"
+        try:
+            response1 = requests.post(endpoint1, headers=headers, json={"limit": 10}, timeout=10)
+            test_results.append({
+                'endpoint': endpoint1,
+                'status': response1.status_code,
+                'response': response1.text[:500] if response1.text else 'No response'
+            })
+        except Exception as e:
+            test_results.append({
+                'endpoint': endpoint1,
+                'error': str(e)
+            })
+        
+        # Test 2: Search endpoint
+        endpoint2 = f"{ABACUS_API_BASE}/api/v0/deployments/search"
+        try:
+            response2 = requests.post(endpoint2, headers=headers, json={
+                "deploymentId": CHECKLIST_FEATURE_GROUP_ID,
+                "query": "*",
+                "limit": 10
+            }, timeout=10)
+            test_results.append({
+                'endpoint': endpoint2,
+                'status': response2.status_code,
+                'response': response2.text[:500] if response2.text else 'No response'
+            })
+        except Exception as e:
+            test_results.append({
+                'endpoint': endpoint2,
+                'error': str(e)
+            })
+        
+        return jsonify({
+            'has_api_key': True,
+            'api_key_preview': api_key[:10] + '...' if len(api_key) > 10 else api_key,
+            'dataset_id': CHECKLIST_DATASET_ID,
+            'feature_group_id': CHECKLIST_FEATURE_GROUP_ID,
+            'base_url': ABACUS_API_BASE,
+            'test_results': test_results
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'has_api_key': True
+        })
+
 @app.route('/api/checklist/booth/<booth_number>', methods=['GET'])
 def get_checklist_by_booth(booth_number):
     """Get checklist items for a specific booth number"""
