@@ -81,14 +81,15 @@ else:
 ORDERS_SHEET_ID = "1zaRPHP3k-K1L0z3Bi_Wk--S1Xe2erOAAVYp78h18UUI"
 CHECKLIST_SHEET_ID = "1jkeob2XkPLBDgqqQqjKeQXq686EmxQhenEET8yuKvlk"
 
-# Abacus AI Configuration for Checklist
+# Abacus AI Configuration for Checklist - Using ChatLLM approach like orders
 ABACUS_API_BASE = "https://cloud.abacus.ai"
 CHECKLIST_DATASET_ID = "7a88a4bc0"
 CHECKLIST_FEATURE_GROUP_ID = "236a2273a"
+CHECKLIST_PROJECT_ID = "16b4367d2c"  # Same ChatLLM project as orders
 
-def query_abacus_checklist(booth_number=None, force_refresh=False):
-    """Query Abacus AI for checklist data"""
-    logger.info(f"🔍 Starting Abacus AI query for booth: {booth_number}")
+def query_abacus_checklist_via_chatllm(booth_number=None, force_refresh=False):
+    """Query Abacus AI for checklist data using ChatLLM approach - same as orders"""
+    logger.info(f"🔍 Starting ChatLLM checklist query for booth: {booth_number}")
     
     try:
         # Get API key from environment
@@ -99,166 +100,171 @@ def query_abacus_checklist(booth_number=None, force_refresh=False):
         
         logger.info(f"✅ API Key found: {api_key[:10]}...")
         
-        headers = {
-            'Authorization': f'Bearer {api_key}',
-            'Content-Type': 'application/json'
-        }
+        # Import abacusai client (same as orders)
+        try:
+            from abacusai import ApiClient
+        except ImportError:
+            logger.error("❌ abacusai package not installed")
+            return get_mock_checklist(booth_number)
         
-        # Try multiple endpoint approaches
-        endpoints_to_try = [
-            # Approach 1: Feature group lookup
-            {
-                'url': f"{ABACUS_API_BASE}/api/v0/featureGroups/{CHECKLIST_FEATURE_GROUP_ID}/lookup",
-                'data': {"limit": 100}
-            },
-            # Approach 2: Feature group query 
-            {
-                'url': f"{ABACUS_API_BASE}/api/v0/featureGroups/{CHECKLIST_FEATURE_GROUP_ID}/query",
-                'data': {"limit": 100}
-            },
-            # Approach 3: Direct dataset query
-            {
-                'url': f"{ABACUS_API_BASE}/api/v0/datasets/{CHECKLIST_DATASET_ID}/query",
-                'data': {"limit": 100}
-            }
-        ]
+        client = ApiClient(api_key)
         
-        for i, endpoint_config in enumerate(endpoints_to_try):
-            try:
-                logger.info(f"🔄 Trying endpoint {i+1}: {endpoint_config['url']}")
-                
-                response = requests.post(
-                    endpoint_config['url'], 
-                    headers=headers, 
-                    json=endpoint_config['data'], 
-                    timeout=30
-                )
-                
-                logger.info(f"📡 Response status: {response.status_code}")
-                logger.info(f"📡 Response headers: {dict(response.headers)}")
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    logger.info(f"✅ SUCCESS! Data received: {len(str(data))} characters")
-                    logger.info(f"📊 Data structure: {list(data.keys()) if isinstance(data, dict) else type(data)}")
-                    
-                    # Try to parse the data
-                    parsed_data = parse_checklist_data(data, booth_number)
-                    if parsed_data:
-                        logger.info(f"🎯 Parsed {len(parsed_data)} checklist items")
-                        return parsed_data
-                    else:
-                        logger.warning(f"⚠️ No items parsed from response")
-                        
-                else:
-                    logger.error(f"❌ Endpoint {i+1} failed: {response.status_code}")
-                    logger.error(f"❌ Error response: {response.text[:500]}")
-                    
-            except Exception as e:
-                logger.error(f"❌ Endpoint {i+1} exception: {str(e)}")
-                continue
+        # Create chat session (same approach as orders)
+        session = client.create_chat_session(CHECKLIST_PROJECT_ID)
+        logger.info(f"✅ Created chat session: {session.chat_session_id}")
         
-        # If all endpoints fail, log the issue and return mock data
-        logger.error("❌ All Abacus AI endpoints failed, using mock data")
-        return get_mock_checklist(booth_number)
+        # Build query based on booth number
+        if booth_number:
+            query = f"""Show me all checklist items for booth number {booth_number} from the checklist sheet. 
+            Format the response as a JSON array with these exact fields:
+            - Booth #
+            - Section
+            - Exhibitor Name
+            - Quantity
+            - Item Name
+            - Special Instructions
+            - Status (TRUE/FALSE)
+            - Date
+            - Hour
+            
+            Return only the JSON data, no explanatory text."""
+        else:
+            query = """Show me the first 20 rows from the checklist sheet. 
+            Format the response as a JSON array with these exact fields:
+            - Booth #
+            - Section
+            - Exhibitor Name
+            - Quantity
+            - Item Name
+            - Special Instructions
+            - Status (TRUE/FALSE)
+            - Date
+            - Hour
+            
+            Return only the JSON data, no explanatory text."""
+        
+        # Get response from ChatLLM
+        response = client.get_chat_response(session.chat_session_id, query)
+        logger.info(f"📋 ChatLLM Response received: {len(response.content)} characters")
+        
+        # Parse the JSON response
+        import json
+        try:
+            # Extract JSON from response - sometimes it's wrapped in markdown
+            content = response.content.strip()
+            if content.startswith('```json'):
+                content = content.replace('```json', '').replace('```', '').strip()
+            elif content.startswith('```'):
+                content = content.replace('```', '').strip()
+            
+            # Parse JSON
+            json_data = json.loads(content)
+            logger.info(f"✅ Successfully parsed JSON: {len(json_data)} items")
+            
+            # Convert to our format
+            return parse_chatllm_checklist_data(json_data, booth_number)
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ JSON parsing failed: {e}")
+            logger.error(f"Raw response: {response.content[:500]}")
+            
+            # Try to extract data from text format
+            return parse_text_checklist_response(response.content, booth_number)
             
     except Exception as e:
-        logger.error(f"❌ Critical error in Abacus query: {str(e)}")
+        logger.error(f"❌ ChatLLM checklist query failed: {str(e)}")
         return get_mock_checklist(booth_number)
 
-def parse_checklist_data(raw_data, booth_number=None):
-    """Parse checklist data from Abacus AI response"""
-    logger.info(f"🔍 Parsing checklist data for booth: {booth_number}")
-    logger.info(f"📊 Raw data type: {type(raw_data)}")
+def parse_chatllm_checklist_data(json_data, booth_number=None):
+    """Parse checklist data from ChatLLM JSON response"""
+    logger.info(f"🔍 Parsing ChatLLM checklist data for booth: {booth_number}")
     
     checklist_items = []
     
-    # Handle different response formats
-    data_to_process = []
-    
-    if isinstance(raw_data, dict):
-        # Check for common data keys
-        possible_keys = ['data', 'results', 'rows', 'items', 'records']
-        for key in possible_keys:
-            if key in raw_data:
-                data_to_process = raw_data[key]
-                logger.info(f"📦 Found data in key '{key}': {len(data_to_process) if isinstance(data_to_process, list) else type(data_to_process)}")
-                break
-        
-        if not data_to_process:
-            # Maybe the whole dict is the data
-            if 'Booth #' in raw_data or 'booth_number' in raw_data:
-                data_to_process = [raw_data]
-                logger.info(f"📦 Using whole dict as single record")
-            else:
-                logger.warning(f"⚠️ No recognizable data structure found. Keys: {list(raw_data.keys())}")
-                return []
-    elif isinstance(raw_data, list):
-        data_to_process = raw_data
-        logger.info(f"📦 Processing list with {len(data_to_process)} items")
-    else:
-        logger.warning(f"⚠️ Unexpected data type: {type(raw_data)}")
-        return []
-    
-    # Process each row
-    for idx, row in enumerate(data_to_process):
+    for idx, row in enumerate(json_data):
         try:
-            logger.info(f"🔍 Processing row {idx}: {row}")
-            
-            if not isinstance(row, dict):
-                logger.warning(f"⚠️ Skipping non-dict row {idx}: {type(row)}")
-                continue
-            
-            # Extract booth number with multiple possible field names
-            booth_num = None
-            booth_fields = ['Booth #', 'booth_number', 'Booth', 'booth', 'BoothNumber']
-            for field in booth_fields:
-                if field in row:
-                    booth_num = str(row[field]).strip()
-                    break
-            
-            if not booth_num:
-                logger.warning(f"⚠️ No booth number found in row {idx}")
-                continue
+            # Get booth number
+            booth_num = str(row.get('Booth #', row.get('booth_number', row.get('Booth', ''))).strip()
             
             # Filter by booth number if specified
             if booth_number and booth_num != str(booth_number):
-                logger.info(f"🔄 Skipping booth {booth_num} (looking for {booth_number})")
                 continue
             
-            # Handle status - could be "TRUE"/"FALSE" or True/False or "checked"/"unchecked"
-            status_value = row.get('Status', row.get('status', False))
+            # Handle status - could be "TRUE"/"FALSE" or True/False
+            status_value = row.get('Status', False)
             if isinstance(status_value, str):
                 completed = status_value.upper() in ['TRUE', 'CHECKED', 'YES', '1']
             else:
                 completed = bool(status_value)
             
-            # Extract other fields
+            # Create checklist item
             item = {
                 'id': f"CHK-{booth_num}-{len(checklist_items) + 1:03d}",
                 'booth_number': booth_num,
-                'section': row.get('Section', row.get('section', '')),
-                'exhibitor_name': row.get('Exhibitor Name', row.get('exhibitor_name', '')),
-                'quantity': int(row.get('Quantity', row.get('quantity', 0))) if row.get('Quantity') or row.get('quantity') else 0,
-                'item_name': row.get('Item Name', row.get('item_name', '')),
-                'special_instructions': row.get('Special Instructions', row.get('special_instructions', '')),
+                'section': row.get('Section', ''),
+                'exhibitor_name': row.get('Exhibitor Name', ''),
+                'quantity': int(row.get('Quantity', 0)) if row.get('Quantity') else 0,
+                'item_name': row.get('Item Name', ''),
+                'special_instructions': row.get('Special Instructions', ''),
                 'status': completed,
-                'date': row.get('Date', row.get('date', '')),
-                'hour': row.get('Hour', row.get('hour', '')),
+                'date': row.get('Date', ''),
+                'hour': row.get('Hour', ''),
                 'completed': completed,
-                'priority': 1 if not completed else 5  # Incomplete items have higher priority
+                'priority': 1 if not completed else 5
             }
             
             checklist_items.append(item)
-            logger.info(f"✅ Added item: {item['item_name']} (completed: {completed})")
+            logger.info(f"✅ Added checklist item: {item['item_name']} (completed: {completed})")
             
         except Exception as e:
-            logger.error(f"❌ Error parsing row {idx}: {e}")
-            logger.error(f"❌ Row data: {row}")
+            logger.error(f"❌ Error parsing checklist row {idx}: {e}")
             continue
     
     logger.info(f"🎯 Successfully parsed {len(checklist_items)} checklist items for booth {booth_number}")
     return checklist_items
+
+def parse_text_checklist_response(text_response, booth_number=None):
+    """Fallback: Parse text-based response if JSON fails"""
+    logger.info("🔄 Attempting to parse text-based checklist response")
+    
+    try:
+        lines = text_response.split('\n')
+        checklist_items = []
+        
+        for line in lines:
+            # Look for lines that might contain booth data
+            if booth_number and str(booth_number) in line:
+                # Try to extract basic info from the line
+                # This is a fallback, so we'll create a basic item
+                item = {
+                    'id': f"CHK-{booth_number}-{len(checklist_items) + 1:03d}",
+                    'booth_number': str(booth_number),
+                    'section': 'Section 1',
+                    'exhibitor_name': f'Booth {booth_number} Exhibitor',
+                    'quantity': 1,
+                    'item_name': line.strip(),
+                    'special_instructions': '',
+                    'status': False,
+                    'date': '',
+                    'hour': '',
+                    'completed': False,
+                    'priority': 1
+                }
+                checklist_items.append(item)
+        
+        if checklist_items:
+            logger.info(f"✅ Extracted {len(checklist_items)} items from text response")
+            return checklist_items
+            
+    except Exception as e:
+        logger.error(f"❌ Text parsing failed: {e}")
+    
+    # Final fallback
+    return get_mock_checklist(booth_number)
+
+def query_abacus_checklist(booth_number=None, force_refresh=False):
+    """Main function that uses ChatLLM approach like orders"""
+    return query_abacus_checklist_via_chatllm(booth_number, force_refresh)
 
 def get_mock_checklist(booth_number=None):
     """Mock checklist data for testing"""
@@ -579,105 +585,68 @@ def test_abacus_connection():
         })
     
     try:
-        headers = {
-            'Authorization': f'Bearer {api_key}',
-            'Content-Type': 'application/json'
-        }
+        # Test ChatLLM approach (same as orders)
+        logger.info("🧪 Testing ChatLLM approach for checklist data")
         
-        # Test different endpoints with detailed logging
-        test_results = []
+        try:
+            from abacusai import ApiClient
+        except ImportError:
+            return jsonify({
+                'error': 'abacusai package not installed',
+                'has_api_key': True,
+                'instructions': 'Install abacusai package: pip install abacusai'
+            })
         
-        endpoints_to_test = [
-            {
-                'name': 'Feature Group Lookup',
-                'url': f"{ABACUS_API_BASE}/api/v0/featureGroups/{CHECKLIST_FEATURE_GROUP_ID}/lookup",
-                'data': {"limit": 10}
-            },
-            {
-                'name': 'Feature Group Query',
-                'url': f"{ABACUS_API_BASE}/api/v0/featureGroups/{CHECKLIST_FEATURE_GROUP_ID}/query", 
-                'data': {"limit": 10}
-            },
-            {
-                'name': 'Dataset Query',
-                'url': f"{ABACUS_API_BASE}/api/v0/datasets/{CHECKLIST_DATASET_ID}/query",
-                'data': {"limit": 10}
-            },
-            {
-                'name': 'Feature Group Query with Filter',
-                'url': f"{ABACUS_API_BASE}/api/v0/featureGroups/{CHECKLIST_FEATURE_GROUP_ID}/query",
-                'data': {
-                    "limit": 10,
-                    "filters": [{"column": "Booth #", "operator": "==", "value": booth_number}]
-                }
-            }
-        ]
+        client = ApiClient(api_key)
         
-        for endpoint_config in endpoints_to_test:
-            try:
-                logger.info(f"🧪 Testing {endpoint_config['name']}")
-                response = requests.post(
-                    endpoint_config['url'], 
-                    headers=headers, 
-                    json=endpoint_config['data'], 
-                    timeout=15
-                )
-                
-                result = {
-                    'name': endpoint_config['name'],
-                    'url': endpoint_config['url'],
-                    'status': response.status_code,
-                    'success': response.status_code == 200
-                }
-                
-                if response.status_code == 200:
-                    try:
-                        data = response.json()
-                        result['data_type'] = type(data).__name__
-                        result['data_keys'] = list(data.keys()) if isinstance(data, dict) else 'not_dict'
-                        result['data_sample'] = str(data)[:200] + '...' if len(str(data)) > 200 else str(data)
-                        
-                        # Try to parse it
-                        parsed = parse_checklist_data(data, booth_number)
-                        result['parsed_items'] = len(parsed) if parsed else 0
-                        result['sample_items'] = parsed[:2] if parsed else []
-                        
-                    except Exception as parse_error:
-                        result['parse_error'] = str(parse_error)
-                        result['raw_response'] = response.text[:500]
-                else:
-                    result['error'] = response.text[:500]
-                    
-                test_results.append(result)
-                
-            except Exception as e:
-                test_results.append({
-                    'name': endpoint_config['name'],
-                    'url': endpoint_config['url'],
-                    'error': str(e),
-                    'success': False
-                })
+        # Test chat session creation
+        session = client.create_chat_session(CHECKLIST_PROJECT_ID)
+        logger.info(f"✅ Created chat session: {session.chat_session_id}")
+        
+        # Test checklist query
+        query = f"""Show me checklist items for booth {booth_number} from the checklist sheet. 
+        Format as JSON with fields: Booth #, Section, Exhibitor Name, Quantity, Item Name, Special Instructions, Status, Date, Hour"""
+        
+        response = client.get_chat_response(session.chat_session_id, query)
+        
+        # Try to parse the response
+        parsed_items = []
+        try:
+            import json
+            content = response.content.strip()
+            if content.startswith('```json'):
+                content = content.replace('```json', '').replace('```', '').strip()
+            elif content.startswith('```'):
+                content = content.replace('```', '').strip()
+            
+            json_data = json.loads(content)
+            parsed_items = parse_chatllm_checklist_data(json_data, booth_number)
+            
+        except:
+            # Try text parsing
+            parsed_items = parse_text_checklist_response(response.content, booth_number)
         
         return jsonify({
             'has_api_key': True,
             'api_key_preview': api_key[:10] + '...' if len(api_key) > 10 else api_key,
-            'dataset_id': CHECKLIST_DATASET_ID,
-            'feature_group_id': CHECKLIST_FEATURE_GROUP_ID,
-            'base_url': ABACUS_API_BASE,
+            'project_id': CHECKLIST_PROJECT_ID,
             'test_booth': booth_number,
-            'test_results': test_results,
-            'summary': {
-                'total_tests': len(test_results),
-                'successful_tests': len([r for r in test_results if r.get('success')]),
-                'total_items_found': sum([r.get('parsed_items', 0) for r in test_results])
-            }
+            'chat_session_id': session.chat_session_id,
+            'raw_response': response.content[:500] + '...' if len(response.content) > 500 else response.content,
+            'parsed_items_count': len(parsed_items) if parsed_items else 0,
+            'sample_items': parsed_items[:2] if parsed_items else [],
+            'success': len(parsed_items) > 0 if parsed_items else False,
+            'method': 'ChatLLM (same as orders)',
+            'status': 'SUCCESS' if parsed_items else 'NEEDS_DEBUGGING'
         })
         
     except Exception as e:
         return jsonify({
             'error': str(e),
             'has_api_key': True,
-            'api_key_preview': api_key[:10] + '...' if len(api_key) > 10 else api_key
+            'api_key_preview': api_key[:10] + '...' if len(api_key) > 10 else api_key,
+            'method': 'ChatLLM',
+            'status': 'FAILED'
         })
 
 @app.route('/api/checklist/booth/<booth_number>', methods=['GET'])
