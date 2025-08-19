@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowRight, Sparkles, Building2, Package, CheckCircle, Shield, Lock, Truck, CheckCircle2, Clock, AlertCircle, MapPin, Star, Zap, Bell, RefreshCw, Award, Search, X, ListChecks, Circle, CheckCircle as CheckCircleIcon, XCircle, AlertTriangle } from 'lucide-react';
+import { ArrowRight, Sparkles, Building2, Package, CheckCircle, Shield, Lock, Truck, CheckCircle2, Clock, AlertCircle, MapPin, Star, Zap, Bell, RefreshCw, Award, Search, X, ListChecks, Circle, CheckCircle as CheckCircleIcon, XCircle, AlertTriangle, PieChart } from 'lucide-react';
 
 function App() {
   const [stage, setStage] = useState('intro');
@@ -346,24 +346,53 @@ function App() {
     );
   };
 
-  const renderChecklistProgressBar = (completedItems, totalItems) => {
-    const percentage = totalItems > 0 ? (completedItems / totalItems) * 100 : 0;
+  // Beautiful pie chart component for checklist progress
+  const ChecklistPieChart = ({ completed, total }) => {
+    const percentage = total > 0 ? (completed / total) * 100 : 0;
+    const radius = 45;
+    const circumference = 2 * Math.PI * radius;
+    const strokeDasharray = circumference;
+    const strokeDashoffset = circumference - (percentage / 100) * circumference;
+    
     return (
-      <div className="space-y-3">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-700 font-medium">Completion Progress</span>
-          <span className="text-gray-900 font-bold">{Math.round(percentage)}%</span>
-        </div>
-        <div className="relative w-full bg-gray-200 rounded-full h-3">
-          <div 
-            className="bg-gradient-to-r from-green-500 to-emerald-500 h-3 rounded-full transition-all duration-1000 relative overflow-hidden"
-            style={{ width: `${percentage}%` }}
-          >
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/60 to-transparent w-20 animate-sweep"></div>
+      <div className="relative w-32 h-32 mx-auto">
+        <svg className="w-32 h-32 transform -rotate-90" viewBox="0 0 100 100">
+          {/* Background circle */}
+          <circle
+            cx="50"
+            cy="50"
+            r={radius}
+            stroke="rgb(229, 231, 235)"
+            strokeWidth="8"
+            fill="transparent"
+          />
+          {/* Progress circle */}
+          <circle
+            cx="50"
+            cy="50"
+            r={radius}
+            stroke="url(#gradient)"
+            strokeWidth="8"
+            fill="transparent"
+            strokeDasharray={strokeDasharray}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            className="transition-all duration-1000 ease-out"
+          />
+          {/* Gradient definition */}
+          <defs>
+            <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="rgb(34, 197, 94)" />
+              <stop offset="100%" stopColor="rgb(16, 185, 129)" />
+            </linearGradient>
+          </defs>
+        </svg>
+        {/* Center text */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-gray-900">{Math.round(percentage)}%</div>
+            <div className="text-xs text-gray-500">Complete</div>
           </div>
-        </div>
-        <div className="text-xs text-gray-500">
-          {completedItems} of {totalItems} items completed
         </div>
       </div>
     );
@@ -699,10 +728,38 @@ function App() {
             </div>
           </div>
 
-          {/* Progress Overview */}
+          {/* Progress Overview with Pie Chart */}
           <div className="bg-white/90 backdrop-blur-lg rounded-2xl p-6 border border-gray-200 shadow-lg mb-8">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Overall Progress</h2>
-            {renderChecklistProgressBar(completedItems, checklist.length)}
+            <h2 className="text-xl font-bold text-gray-900 mb-6 text-center">Setup Progress Overview</h2>
+            <div className="flex flex-col md:flex-row items-center justify-center space-y-6 md:space-y-0 md:space-x-12">
+              {/* Pie Chart */}
+              <div className="flex flex-col items-center">
+                <ChecklistPieChart completed={completedItems} total={checklist.length} />
+                <div className="mt-4 text-center">
+                  <p className="text-sm text-gray-600">
+                    {completedItems} of {checklist.length} items completed
+                  </p>
+                </div>
+              </div>
+              
+              {/* Progress Details */}
+              <div className="grid grid-cols-2 gap-6">
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                    <CheckCircleIcon className="w-8 h-8 text-green-500" />
+                  </div>
+                  <div className="text-2xl font-bold text-green-500">{completedItems}</div>
+                  <div className="text-sm text-gray-600">Completed</div>
+                </div>
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                    <Clock className="w-8 h-8 text-yellow-500" />
+                  </div>
+                  <div className="text-2xl font-bold text-yellow-500">{pendingItems}</div>
+                  <div className="text-sm text-gray-600">Pending</div>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Loading state */}
@@ -828,6 +885,262 @@ function App() {
             </p>
             <div className="mt-4 text-xs text-gray-400">
               ExpoFlow v3.1 • Real-time Order & Checklist Tracking System
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // EXACT ORDERS LAYOUT FROM THE ORIGINAL WORKING VERSION
+  if (stage === 'orders') {
+    const deliveredOrders = orders.filter(o => o.status === 'delivered').length;
+    const pendingOrders = orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled').length;
+
+    // Generate icon data for the exhibitor
+    const iconData = exhibitorName ? generateExhibitorIcon(exhibitorName, boothNumber) : null;
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white p-6">
+        <div className="max-w-7xl mx-auto">
+          {/* Header - Mobile Responsive - EXACT from second file */}
+          <div className="bg-white/90 backdrop-blur-lg rounded-3xl p-4 md:p-6 border border-gray-200 shadow-xl mb-8">
+            <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+              {/* Left side - Company info */}
+              <div className="flex items-center space-x-3 md:space-x-6">
+                <div className="flex items-center space-x-3 md:space-x-4">
+                  <ExpoLogo size="small" />
+                  {iconData ? (
+                    <div className={`w-12 h-12 md:w-16 md:h-16 rounded-2xl bg-gradient-to-br ${iconData.colorScheme.bg} flex items-center justify-center shadow-lg border border-gray-300`}>
+                      <span className={`text-sm md:text-lg font-bold ${iconData.colorScheme.text}`}>
+                        {iconData.initials}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="w-12 h-12 md:w-16 md:h-16 rounded-2xl bg-gradient-to-br from-teal-600 to-teal-700 flex items-center justify-center shadow-lg border border-gray-300">
+                      <Building2 className="w-6 h-6 md:w-8 md:h-8 text-white" />
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-xl md:text-3xl font-bold text-gray-900 truncate">{exhibitorName}</h1>
+                  <p className="text-sm md:text-base text-gray-600">
+                    <span className="text-teal-600">Booth {boothNumber}</span>
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 md:gap-4 mt-1 md:mt-2">
+                    <span className="text-xs md:text-sm text-teal-600 flex items-center space-x-1">
+                      <Award className="w-3 h-3 md:w-4 md:h-4" />
+                      <span>Expo Convention Contractors</span>
+                    </span>
+                    <span className="text-xs md:text-sm text-gray-500">Live Order Tracking</span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Right side - Action buttons - EXACT from second file */}
+              <div className="flex items-center justify-end space-x-2 md:space-x-4 flex-shrink-0">
+                <button 
+                  onClick={handleRefresh}
+                  disabled={loading}
+                  className="p-2 md:p-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl md:rounded-2xl transition-all duration-300 border border-gray-200 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 md:w-5 md:h-5 ${loading ? 'animate-spin' : ''}`} />
+                </button>
+                <div className="relative">
+                  <Bell className="w-5 h-5 md:w-6 md:h-6 text-gray-600 cursor-pointer hover:text-teal-600 transition-colors" />
+                  {notifications.length > 0 && (
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-teal-500 rounded-full animate-pulse"></div>
+                  )}
+                </div>
+                <button 
+                  onClick={() => setStage('options')}
+                  className="px-3 py-2 md:px-6 md:py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl md:rounded-2xl transition-all duration-300 border border-gray-200 text-sm md:text-base"
+                >
+                  ← Back
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Stats Overview - EXACT from second file */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="bg-white/90 backdrop-blur-lg rounded-2xl p-6 border border-gray-200 shadow-lg">
+              <div className="flex items-center space-x-3 mb-4">
+                <Package className="w-8 h-8 text-teal-600" />
+                <h3 className="text-lg font-semibold text-gray-900">Total Orders</h3>
+              </div>
+              <div className="text-3xl font-bold text-teal-600">{orders.length}</div>
+              <div className="text-xs text-gray-500 mt-1">Managed by Expo CCI</div>
+            </div>
+            <div className="bg-white/90 backdrop-blur-lg rounded-2xl p-6 border border-gray-200 shadow-lg">
+              <div className="flex items-center space-x-3 mb-4">
+                <CheckCircle2 className="w-8 h-8 text-green-500" />
+                <h3 className="text-lg font-semibold text-gray-900">Delivered</h3>
+              </div>
+              <div className="text-3xl font-bold text-green-500">{deliveredOrders}</div>
+              <div className="text-xs text-gray-500 mt-1">Completed</div>
+            </div>
+            <div className="bg-white/90 backdrop-blur-lg rounded-2xl p-6 border border-gray-200 shadow-lg">
+              <div className="flex items-center space-x-3 mb-4">
+                <Clock className="w-8 h-8 text-purple-500" />
+                <h3 className="text-lg font-semibold text-gray-900">In Progress</h3>
+              </div>
+              <div className="text-3xl font-bold text-purple-500">{pendingOrders}</div>
+              <div className="text-xs text-gray-500 mt-1">Auto-refresh every 2 min</div>
+            </div>
+          </div>
+
+          {/* Order Status Legend - EXACT from second file */}
+          <div className="bg-white/90 backdrop-blur-lg rounded-2xl p-6 border border-gray-200 shadow-lg mb-8">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Delivery Steps</h2>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              {Object.entries(orderStatuses)
+                .sort(([,a], [,b]) => a.priority - b.priority)
+                .map(([status, info]) => (
+                  <div key={status} className={`flex items-center space-x-2 p-3 rounded-lg ${info.bgColor}`}>
+                    <info.icon className="w-4 h-4" />
+                    <div>
+                      <div className="text-sm font-medium">{info.label}</div>
+                      <div className="text-xs opacity-75">Priority {info.priority}</div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+            <div className="mt-3 text-xs text-gray-500">
+              Orders are automatically sorted by priority. Pending orders appear first, delivered orders appear last.
+            </div>
+          </div>
+
+          {/* Loading state - EXACT from second file */}
+          {loading && (
+            <div className="text-center py-8">
+              <RefreshCw className="w-8 h-8 text-teal-600 animate-spin mx-auto mb-4" />
+              <p className="text-gray-700">Synchronizing with Expo CCI Database...</p>
+            </div>
+          )}
+
+          {/* Recent Notifications - EXACT from second file */}
+          {notifications.length > 0 && (
+            <div className="bg-white/90 backdrop-blur-lg rounded-2xl p-6 border border-gray-200 shadow-lg mb-8">
+              <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center space-x-2">
+                <Zap className="w-6 h-6 text-teal-600" />
+                <span>Live Updates</span>
+              </h2>
+              <div className="space-y-3">
+                {notifications.map((notif) => (
+                  <div key={notif.id} className="flex items-center space-x-4 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="w-2 h-2 bg-teal-500 rounded-full animate-pulse"></div>
+                    <span className="text-gray-800 flex-1">{notif.message}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Orders Grid - EXACT from second file */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {orders.map((order) => {
+              const statusInfo = orderStatuses[order.status] || orderStatuses['in-process'];
+              const StatusIcon = statusInfo.icon;
+              
+              return (
+                <div key={order.id} className="bg-white/90 backdrop-blur-lg rounded-2xl p-6 border border-gray-200 hover:border-gray-300 transition-all duration-300 shadow-lg">
+                  {/* Order Header */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-3">
+                      <StatusIcon className="w-6 h-6 text-gray-700" />
+                      <span className="text-gray-900 font-bold">{order.id}</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
+                        Priority {statusInfo.priority}
+                      </span>
+                      {order.expo_processed && (
+                        <span className="text-xs bg-teal-100 text-teal-700 px-2 py-1 rounded-full">
+                          Expo CCI
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Order Info */}
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">{order.item}</h3>
+                  <p className="text-gray-600 text-sm mb-4">{order.description}</p>
+
+                  {/* Order Details */}
+                  <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
+                    <div>
+                      <p className="text-gray-500">Order Date</p>
+                      <p className="text-gray-900 font-medium">{order.order_date}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Quantity</p>
+                      <p className="text-gray-900 font-medium">{order.quantity}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Color</p>
+                      <p className="text-gray-900 font-medium">{order.color}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Section</p>
+                      <p className="text-gray-900 font-medium">{order.section}</p>
+                    </div>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="mb-4">
+                    {renderProgressBar(order.status)}
+                  </div>
+
+                  {/* Status Badge - Original colors preserved */}
+                  <div className={`inline-flex items-center space-x-2 px-3 py-2 rounded-full ${statusInfo.bgColor}`}>
+                    <StatusIcon className="w-4 h-4" />
+                    <span className="text-sm font-medium">{statusInfo.label}</span>
+                  </div>
+
+                  {/* Comments */}
+                  {order.comments && (
+                    <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                      <p className="text-gray-500 text-xs mb-1">Comments</p>
+                      <p className="text-gray-800 text-sm">{order.comments}</p>
+                    </div>
+                  )}
+
+                  {/* Expo CCI Footer */}
+                  <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+                    <ExpoLogo size="small" />
+                    <span className="text-xs text-gray-400">Managed by Expo Convention Contractors</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* No orders message - EXACT from second file */}
+          {!loading && orders.length === 0 && (
+            <div className="text-center py-12">
+              <div className="mb-4">
+                <ExpoLogo size="large" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">No Orders Found</h3>
+              <p className="text-gray-600">No orders found for {exhibitorName} in our system.</p>
+              <p className="text-gray-500 text-sm mt-2">Managed by Expo Convention Contractors</p>
+            </div>
+          )}
+
+          {/* Footer - EXACT from second file */}
+          <div className="mt-12 text-center bg-white/90 backdrop-blur-lg rounded-2xl p-6 border border-gray-200 shadow-lg">
+            <div className="flex items-center justify-center mb-3">
+              <ExpoLogo size="large" />
+            </div>
+            <p className="text-gray-600 text-sm font-medium mb-2">
+              "Large Enough To Be Exceptional, Yet Small Enough To Be Personable"
+            </p>
+            <p className="text-gray-500 text-xs">
+              Expo Convention Contractors Inc. • Professional Exhibition Management • Miami, Florida
+            </p>
+            <div className="mt-4 text-xs text-gray-400">
+              ExpoFlow v3.0 • Real-time Order Tracking System
             </div>
           </div>
         </div>
